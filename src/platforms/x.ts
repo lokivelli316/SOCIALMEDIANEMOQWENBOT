@@ -1,7 +1,13 @@
 import { open, stat } from "node:fs/promises";
-import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import type {
+  ChannelSnapshot,
+  CreatorProfile,
+  PublishPlan,
+  PublishResult,
+  ReleaseManifest
+} from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { credential, readJsonResponse, selectedAssets } from "./common.js";
+import { credential, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const MEDIA_URL = "https://api.x.com/2/media/upload";
 const POST_URL = "https://api.x.com/2/tweets";
@@ -44,7 +50,11 @@ async function uploadMedia(accessToken: string, path: string, mimeType: string):
       form.set("command", "APPEND");
       form.set("media_id", mediaId);
       form.set("segment_index", String(segment));
-      form.set("media", new Blob([new Uint8Array(buffer.subarray(0, bytesRead))], { type: "application/octet-stream" }), "chunk");
+      form.set(
+        "media",
+        new Blob([new Uint8Array(buffer.subarray(0, bytesRead))], { type: "application/octet-stream" }),
+        "chunk"
+      );
 
       const response = await fetch(MEDIA_URL, {
         method: "POST",
@@ -52,7 +62,6 @@ async function uploadMedia(accessToken: string, path: string, mimeType: string):
         body: form
       });
       if (!response.ok) await readJsonResponse(response);
-
       offset += bytesRead;
       segment += 1;
     }
@@ -91,27 +100,40 @@ export class XAdapter implements PlatformAdapter {
 
   plan(creator: CreatorProfile, release: ReleaseManifest): PublishPlan {
     const assets = selectedAssets(release, this.platform).filter(a => a.path);
+    const t = target(release, this.platform);
+    const replyTo = stringValue(t.replyToId);
+    const quote = stringValue(t.quotePostId);
+    const mode = replyTo ? "reply" : quote ? "quote post" : "post";
     return {
       platform: this.platform,
       creatorId: creator.id,
       releaseId: release.id,
-      summary: `Create X post "${release.title}" with ${assets.length} local media asset(s)`,
+      summary: `Create X ${mode} "${release.title}" with ${assets.length} local media asset(s)`,
       requiresApproval: creator.platforms.x?.approval === "required",
-      warnings: assets.length > 4 ? ["X supports a limited attachment set; only the first 4 selected assets will be uploaded"] : []
+      warnings: assets.length > 4
+        ? ["X supports a limited attachment set; only the first 4 selected assets will be uploaded"]
+        : []
     };
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
     const accessToken = credential(creator, this.platform, "accessToken");
+    const t = target(release, this.platform);
     const mediaIds: string[] = [];
     for (const asset of selectedAssets(release, this.platform).filter(a => a.path).slice(0, 4)) {
       mediaIds.push(await uploadMedia(accessToken, asset.path!, asset.mimeType ?? "application/octet-stream"));
     }
 
     const payload: Record<string, unknown> = {
-      text: release.text ?? release.description ?? release.title
+      text: stringValue(t.text) ?? release.text ?? release.description ?? release.title
     };
     if (mediaIds.length) payload.media = { media_ids: mediaIds };
+
+    const replyTo = stringValue(t.replyToId);
+    if (replyTo) payload.reply = { in_reply_to_tweet_id: replyTo };
+
+    const quotePostId = stringValue(t.quotePostId);
+    if (quotePostId) payload.quote_tweet_id = quotePostId;
 
     const body = await readJsonResponse(await fetch(POST_URL, {
       method: "POST",
@@ -128,6 +150,25 @@ export class XAdapter implements PlatformAdapter {
       status: "published",
       externalId: id || undefined,
       url: id ? `https://x.com/i/web/status/${id}` : undefined,
+      raw: body as any
+    };
+  }
+
+  async inspect(creator: CreatorProfile, externalId: string): Promise<ChannelSnapshot> {
+    const accessToken = credential(creator, this.platform, "accessToken");
+    const url = new URL(`https://api.x.com/2/tweets/${encodeURIComponent(externalId)}`);
+    url.searchParams.set("tweet.fields", "created_at,public_metrics,possibly_sensitive");
+    const body = await readJsonResponse(await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }));
+    const data = body.data ?? {};
+    const metrics = data.public_metrics && typeof data.public_metrics === "object"
+      ? data.public_metrics
+      : {};
+    return {
+      platform: this.platform,
+      externalId,
+      metrics: metrics as any,
       raw: body as any
     };
   }
