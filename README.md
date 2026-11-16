@@ -112,4 +112,16 @@ Runtime state and receipts are written under `.nemoqwen/` and ignored by git.
 - TikTok Content Posting: https://developers.tiktok.com/products/content-posting-api/
 - YouTube videos.insert: https://developers.google.com/youtube/v3/docs/videos/insert
 
+
+## Multi-model capability parade
+
+Before app/CLI/GUI packaging, capability proposals are collected against the verified baseline rather than by independently redesigning the system.
+
+- Capability intake and decision ledger: `CAPABILITY_LEDGER.md`
+- Multi-model review contract: `docs/MULTIMODEL_PARADE.md`
+- Frozen pre-parade implementation reference: `baseline/pre-parade-20261116`
+- Verified pre-parade implementation commit: `eb5854e85b3ba011823b38a6a5a733fda008a752`
+
+The parade is intended for Meta, Muse, Grok, Claude, ChatGPT, human reviewers, and later models. Reviewer convergence raises priority but does not automatically authorize an architectural replacement.
+
 See `docs/ARCHITECTURE.md` for the execution contract.
