@@ -1,0 +1,50 @@
+{
+  "musician": {
+    "contentModes": ["song", "music_video", "lyric_video", "teaser", "release_note", "live_clip"],
+    "measurementFocus": ["views", "watch_time", "completion", "rewatches", "shares", "saves", "follows"]
+  },
+  "podcaster": {
+    "contentModes": ["episode", "clip", "quote", "guest_announcement", "show_notes"],
+    "measurementFocus": ["views", "watch_time", "clicks", "comments", "subscribers"]
+  },
+  "video_creator": {
+    "contentModes": ["long_video", "short", "trailer", "behind_the_scenes"],
+    "measurementFocus": ["views", "retention", "completion", "shares", "subscribers"]
+  },
+  "visual_artist": {
+    "contentModes": ["artwork", "process", "carousel", "timelapse", "commission"],
+    "measurementFocus": ["views", "saves", "shares", "profile_visits"]
+  },
+  "streamer": {
+    "contentModes": ["stream_announcement", "clip", "highlight", "schedule", "community_post"],
+    "measurementFocus": ["views", "clicks", "concurrent_viewers", "follows"]
+  },
+  "educator": {
+    "contentModes": ["lesson", "explainer", "thread", "resource", "qa"],
+    "measurementFocus": ["retention", "saves", "shares", "comments", "clicks"]
+  },
+  "writer": {
+    "contentModes": ["essay", "excerpt", "thread", "release", "reading"],
+    "measurementFocus": ["reads", "clicks", "saves", "comments", "follows"]
+  },
+  "comedian": {
+    "contentModes": ["bit", "sketch", "clip", "meme", "show_announcement"],
+    "measurementFocus": ["views", "rewatches", "shares", "comments", "follows"]
+  },
+  "maker_engineer": {
+    "contentModes": ["build_log", "demo", "failure_analysis", "tutorial", "release"],
+    "measurementFocus": ["watch_time", "saves", "clicks", "comments", "forks"]
+  },
+  "business_brand": {
+    "contentModes": ["launch", "product", "case_study", "update", "support", "campaign"],
+    "measurementFocus": ["reach", "clicks", "conversions", "comments", "leads"]
+  },
+  "nonprofit_advocacy": {
+    "contentModes": ["campaign", "education", "event", "impact_story", "call_to_action"],
+    "measurementFocus": ["reach", "shares", "clicks", "signups", "donations"]
+  },
+  "custom": {
+    "contentModes": [],
+    "measurementFocus": []
+  }
+}
