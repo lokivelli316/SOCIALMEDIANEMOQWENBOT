@@ -77,6 +77,13 @@ export interface PublishResult {
   raw?: JsonValue;
 }
 
+export interface ChannelSnapshot {
+  platform: Platform;
+  externalId: string;
+  metrics: Record<string, JsonValue>;
+  raw?: JsonValue;
+}
+
 export interface Receipt {
   at: string;
   creatorId: string;
