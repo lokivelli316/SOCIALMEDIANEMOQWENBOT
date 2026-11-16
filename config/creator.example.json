@@ -1,0 +1,39 @@
+{
+  "id": "creator-001",
+  "displayName": "Example Creator",
+  "primaryType": "musician",
+  "secondaryTypes": ["comedian", "maker_engineer"],
+  "voice": ["direct", "technical", "irreverent"],
+  "contentPillars": ["music", "engineering", "comedy"],
+  "platforms": {
+    "x": {
+      "enabled": true,
+      "approval": "required",
+      "credentials": { "accessToken": "CREATOR_X_ACCESS_TOKEN" }
+    },
+    "reddit": {
+      "enabled": true,
+      "approval": "required",
+      "credentials": { "accessToken": "CREATOR_REDDIT_ACCESS_TOKEN" },
+      "defaults": { "userAgent": "SOCIALMEDIANEMOQWENBOT/0.1 creator-001" }
+    },
+    "facebook": {
+      "enabled": true,
+      "approval": "required",
+      "credentials": { "accessToken": "CREATOR_FACEBOOK_PAGE_ACCESS_TOKEN" },
+      "defaults": { "pageId": "REPLACE_WITH_PAGE_ID" }
+    },
+    "tiktok": {
+      "enabled": true,
+      "approval": "required",
+      "credentials": { "accessToken": "CREATOR_TIKTOK_ACCESS_TOKEN" },
+      "defaults": { "privacyLevel": "SELF_ONLY" }
+    },
+    "youtube": {
+      "enabled": true,
+      "approval": "required",
+      "credentials": { "accessToken": "CREATOR_YOUTUBE_ACCESS_TOKEN" },
+      "defaults": { "privacyStatus": "private" }
+    }
+  }
+}
