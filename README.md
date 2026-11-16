@@ -113,6 +113,37 @@ Runtime state and receipts are written under `.nemoqwen/` and ignored by git.
 - YouTube videos.insert: https://developers.google.com/youtube/v3/docs/videos/insert
 
 
+
+## Repo-native agent skills
+
+The repository carries its own canonical skill pack under `.agents/skills/` rather than depending on a separate machine-level skill install.
+
+Current pack:
+
+- `be-ambitious`
+- `nemoqwen-social-orchestrator`
+- `nemoqwen-content-adaptation`
+- `nemoqwen-analytics`
+- `nemoqwen-browser-qa`
+- `nemoqwen-auth-oauth`
+- `nemoqwen-security-audit`
+- `nemoqwen-design-review`
+- `nemoqwen-swiftui-ios`
+
+Validate them with:
+
+```bash
+npm run skills:validate
+```
+
+Mirror them for Claude/GitHub-host skill discovery when needed:
+
+```bash
+npm run skills:sync
+```
+
+Skill provenance and third-party notices are recorded in `skills/manifest.json` and `THIRD_PARTY_NOTICES.md`. Skill presence is not runtime certification of any referenced external tool.
+
 ## Multi-model capability parade
 
 Before app/CLI/GUI packaging, capability proposals are collected against the verified baseline rather than by independently redesigning the system.
