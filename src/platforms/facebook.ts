@@ -1,0 +1,62 @@
+import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import type { PlatformAdapter } from "./adapter.js";
+import { credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+
+export class FacebookAdapter implements PlatformAdapter {
+  readonly platform = "facebook" as const;
+
+  plan(creator: CreatorProfile, release: ReleaseManifest): PublishPlan {
+    const t = target(release, this.platform);
+    const pageId = stringValue(t.pageId) ?? defaultString(creator, this.platform, "pageId") ?? "UNSET";
+    const videoUrl = stringValue(t.videoUrl) ?? selectedAssets(release, this.platform).find(a => a.kind === "video")?.url;
+    return {
+      platform: this.platform,
+      creatorId: creator.id,
+      releaseId: release.id,
+      summary: `Publish ${videoUrl ? "video" : "feed"} post "${release.title}" to Facebook Page ${pageId}`,
+      requiresApproval: creator.platforms.facebook?.approval === "required",
+      warnings: pageId === "UNSET" ? ["Facebook requires a Page ID"] : []
+    };
+  }
+
+  async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    const accessToken = credential(creator, this.platform, "accessToken");
+    const t = target(release, this.platform);
+    const pageId = stringValue(t.pageId) ?? defaultString(creator, this.platform, "pageId");
+    if (!pageId) throw new Error("Facebook requires targets.facebook.pageId or platform default pageId");
+
+    const videoUrl = stringValue(t.videoUrl) ?? selectedAssets(release, this.platform).find(a => a.kind === "video")?.url;
+    const form = new URLSearchParams();
+    let endpoint: string;
+
+    if (videoUrl) {
+      endpoint = `https://graph.facebook.com/v27.0/${encodeURIComponent(pageId)}/videos`;
+      form.set("file_url", videoUrl);
+      form.set("title", release.title);
+      form.set("description", release.text ?? release.description ?? "");
+      form.set("published", "true");
+    } else {
+      endpoint = `https://graph.facebook.com/v27.0/${encodeURIComponent(pageId)}/feed`;
+      form.set("message", release.text ?? release.description ?? release.title);
+      const link = stringValue(t.link) ?? release.url;
+      if (link) form.set("link", link);
+    }
+
+    const body = await readJsonResponse(await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: form
+    }));
+
+    const id = String(body.id ?? body.video_id ?? "");
+    return {
+      platform: this.platform,
+      status: "published",
+      externalId: id || undefined,
+      raw: body as any
+    };
+  }
+}
