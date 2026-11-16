@@ -1,4 +1,12 @@
-import type { CreatorProfile, Platform, PublishPlan, PublishResult, Receipt, ReleaseManifest } from "../types.js";
+import type {
+  ChannelSnapshot,
+  CreatorProfile,
+  Platform,
+  PublishPlan,
+  PublishResult,
+  Receipt,
+  ReleaseManifest
+} from "../types.js";
 import { adapters } from "../platforms/index.js";
 import { HoldError } from "../platforms/common.js";
 import { publishAuthority } from "./policy.js";
@@ -40,6 +48,12 @@ export class NemoQwenOrchestrator {
     }
     await this.receipt(creator, release, platform, result);
     return result;
+  }
+
+  async inspect(creator: CreatorProfile, platform: Platform, externalId: string): Promise<ChannelSnapshot> {
+    const adapter = adapters[platform];
+    if (!adapter.inspect) throw new HoldError(`${platform} readback is not implemented yet`);
+    return adapter.inspect(creator, externalId);
   }
 
   private async receipt(
