@@ -9,7 +9,8 @@ function usage(): never {
     "Usage:",
     "  npm run cli -- creator-types",
     "  npm run cli -- plan <creator.json> <release.json> [platform]",
-    "  npm run cli -- publish <creator.json> <release.json> <platform> [--approve]"
+    "  npm run cli -- publish <creator.json> <release.json> <platform> [--approve]",
+    "  npm run cli -- inspect <creator.json> <platform> <external-id>"
   ].join("\n"));
   process.exit(2);
 }
@@ -47,6 +48,13 @@ if (command === "creator-types") {
   );
   console.log(JSON.stringify(result, null, 2));
   if (result.status !== "published") process.exitCode = 1;
+} else if (command === "inspect") {
+  const [creatorPath, platformName, externalId] = args;
+  if (!creatorPath || !platformName || !externalId) usage();
+  const creator = await loadCreator(creatorPath);
+  const platform = parsePlatform(platformName);
+  const snapshot = await new NemoQwenOrchestrator().inspect(creator, platform, externalId);
+  console.log(JSON.stringify(snapshot, null, 2));
 } else {
   usage();
 }
