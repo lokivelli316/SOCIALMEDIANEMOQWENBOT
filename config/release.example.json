@@ -1,0 +1,35 @@
+{
+  "id": "release-001",
+  "contentType": "music_video",
+  "title": "Example Release",
+  "text": "Example release copy.",
+  "description": "Longer description for platforms that support it.",
+  "url": "https://example.com/release",
+  "tags": ["example", "music"],
+  "assets": [
+    {
+      "id": "master-video",
+      "kind": "video",
+      "path": "./media/example.mp4",
+      "url": "https://media.example.com/example.mp4",
+      "mimeType": "video/mp4",
+      "alt": "Example music video"
+    }
+  ],
+  "targets": {
+    "reddit": {
+      "subreddit": "REPLACE_ME",
+      "kind": "link",
+      "url": "https://example.com/release"
+    },
+    "x": {},
+    "facebook": {},
+    "tiktok": {
+      "videoUrl": "https://media.example.com/example.mp4",
+      "privacyLevel": "SELF_ONLY"
+    },
+    "youtube": {
+      "privacyStatus": "private"
+    }
+  }
+}
