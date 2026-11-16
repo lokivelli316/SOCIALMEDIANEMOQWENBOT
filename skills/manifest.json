@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "canonicalRoot": ".agents/skills",
+  "generatedMirrors": [".claude/skills", ".github/skills"],
+  "skills": [
+    {
+      "name": "be-ambitious",
+      "kind": "copied-owned",
+      "sourceRepo": "lokivelli316/EARLYWINE-PRESIDENTIAL-BLUEPRINT",
+      "sourcePath": ".claude/skills/be-ambitious/SKILL.md",
+      "runtimeStatus": "repo-local instruction asset"
+    },
+    {
+      "name": "nemoqwen-social-orchestrator",
+      "kind": "project-native-derived",
+      "sourceRepo": "lokivelli316/agentic-awesome-skills",
+      "sourcePath": "plugins/agentic-awesome-skills/skills/social-orchestrator/SKILL.md",
+      "runtimeStatus": "repo-local instruction asset"
+    },
+    {
+      "name": "nemoqwen-content-adaptation",
+      "kind": "project-native-derived",
+      "sourceRepo": "lokivelli316/agentic-awesome-skills",
+      "sourcePath": "plugins/agentic-awesome-skills/skills/social-content/SKILL.md",
+      "runtimeStatus": "repo-local instruction asset"
+    },
+    {
+      "name": "nemoqwen-analytics",
+      "kind": "project-native-derived",
+      "sourceRepo": "lokivelli316/agentic-awesome-skills",
+      "sourcePath": "plugins/agentic-awesome-skills/skills/analytics-tracking/SKILL.md",
+      "runtimeStatus": "repo-local instruction asset"
+    },
+    {
+      "name": "nemoqwen-browser-qa",
+      "kind": "project-native-derived",
+      "sourceRepo": "Tencent/BrowserSkill",
+      "sourcePath": "crates/bsk-cli/skill/SKILL.md",
+      "sourceLicense": "MIT",
+      "runtimeStatus": "instruction asset; BrowserSkill runtime not bundled"
+    },
+    {
+      "name": "nemoqwen-auth-oauth",
+      "kind": "project-native-derived",
+      "sourceRepo": "lokivelli316/agentic-awesome-skills",
+      "sourcePath": "plugins/agentic-awesome-skills/skills/auth-implementation-patterns/SKILL.md",
+      "runtimeStatus": "repo-local instruction asset"
+    },
+    {
+      "name": "nemoqwen-security-audit",
+      "kind": "project-native-derived",
+      "sourceRepo": "cloudflare/security-audit-skill",
+      "sourcePath": "skills/security-audit/SKILL.md",
+      "sourceLicense": "MIT",
+      "runtimeStatus": "instruction asset; upstream companion files not bundled"
+    },
+    {
+      "name": "nemoqwen-design-review",
+      "kind": "project-native-derived",
+      "sourceRepo": "Leonxlnx/taste-skill",
+      "sourcePath": "skills/taste-skill/SKILL.md",
+      "sourceLicense": "MIT",
+      "runtimeStatus": "instruction asset; upstream gate/runtime not bundled"
+    },
+    {
+      "name": "nemoqwen-swiftui-ios",
+      "kind": "project-native-derived",
+      "sourceRepo": "twostraws/SwiftUI-Agent-Skill",
+      "sourcePath": "swiftui-pro/SKILL.md",
+      "sourceLicense": "MIT",
+      "runtimeStatus": "repo-local instruction asset; upstream reference library not bundled"
+    }
+  ],
+  "evaluatedNotBundled": [
+    {
+      "sourceRepo": "lokivelli316/book-to-skill",
+      "reason": "SKILL.md depends on repository scripts and parsers; copying the instruction file alone would create an incomplete local skill."
+    },
+    {
+      "sourceRepo": "mksglu/context-mode",
+      "reason": "Useful MCP/context runtime, but it is an external integration rather than a self-contained SKILL.md."
+    },
+    {
+      "sourceRepo": "tech-leads-club/agent-skills",
+      "reason": "Registry/installer source; useful for future discovery, not imported wholesale into this repo."
+    }
+  ]
+}
