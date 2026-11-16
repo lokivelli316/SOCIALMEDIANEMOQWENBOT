@@ -19,6 +19,18 @@ Frozen pre-parade implementation reference:
 
 The live working branch may contain coordination documentation added after that commit.
 
+## Repo-native skill pack
+
+Before reviewing or proposing changes:
+
+1. Read `AGENTS.md`.
+2. Read `skills/manifest.json`.
+3. Load the relevant `.agents/skills/<skill>/SKILL.md` for the task.
+4. Treat those skills as project operating context, not as proof that any referenced upstream runtime is installed.
+5. Do not replace the skill pack with a model-specific private prompt. Propose additions through `CAPABILITY_LEDGER.md`.
+
+Relevant skills include social orchestration, content adaptation, analytics, browser QA, auth/OAuth, security audit, editable GUI design, SwiftUI/iOS, and the imported `be-ambitious` engineering pass.
+
 ## Non-negotiable preservation rules
 
 - Preserve existing creator abstraction.
