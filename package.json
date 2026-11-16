@@ -7,7 +7,9 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "skills:validate": "node scripts/validate-skills.mjs",
+    "skills:sync": "node scripts/sync-skills.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
