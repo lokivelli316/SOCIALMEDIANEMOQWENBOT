@@ -55,6 +55,7 @@ The existing verified implementation is the baseline. Proposals MUST add, extend
 | CAP-008 | Windows desktop packaging | Initial architecture | Native installable desktop control surface over shared core | app/desktop, packaging | signing/distribution choices | medium | clean install, update, credential storage, IPC | PROPOSED |  |  |
 | CAP-009 | iOS application | Initial architecture | Mobile creator operations over shared schemas/core contracts | app/mobile, API/service boundary | Apple signing, platform restrictions | high | auth, background limits, secure storage, approval UX | PROPOSED |  |  |
 | CAP-010 | Creator-facing dashboard | Initial architecture | Unified releases, account state, HOLDs, analytics, receipts, and approvals | gui, analytics, receipts | depends on deployment model | medium | role isolation, data integrity, accessibility | PROPOSED |  |  |
+| CAP-011 | Repo-native cross-agent skill pack | Existing repo + owned skill repos + curated starred skill sources | Gives Meta/Muse/Grok/Claude/Codex/Claude-style agents shared operating guidance inside the repo without machine-global setup | .agents/skills, scripts, CI, docs | none for instruction files; referenced external runtimes remain separate | medium | frontmatter validation, duplicate-name check, CI, host mirror sync | IMPLEMENTED |  | Canonical root .agents/skills; provenance in skills/manifest.json; CI verification pending at time of entry |
 
 ## Intake template
 
