@@ -94,6 +94,8 @@ export interface Receipt {
   platform: Platform;
   action: "plan" | "publish" | "inspect";
   operationKey?: string;
+  attemptId?: string;
+  phase?: "intent" | "final";
   result: ReceiptResult;
   previousReceiptHash?: string | null;
   receiptHash?: string;
