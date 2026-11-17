@@ -1,6 +1,6 @@
 import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { HoldError, boolValue, credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, boolValue, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const BASE = "https://open.tiktokapis.com";
 
@@ -27,7 +27,7 @@ export class TikTokAdapter implements PlatformAdapter {
       "Content-Type": "application/json; charset=UTF-8"
     };
 
-    const creatorInfo = await readJsonResponse(await fetch(`${BASE}/v2/post/publish/creator_info/query/`, {
+    const creatorInfo = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/creator_info/query/`, {
       method: "POST",
       headers
     }));
@@ -66,7 +66,7 @@ export class TikTokAdapter implements PlatformAdapter {
       }
     };
 
-    const body = await readJsonResponse(await fetch(`${BASE}/v2/post/publish/video/init/`, {
+    const body = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/video/init/`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload)
