@@ -7,7 +7,7 @@ import type {
   ReleaseManifest
 } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { credential, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, credential, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const MEDIA_URL = "https://api.x.com/2/media/upload";
 const POST_URL = "https://api.x.com/2/tweets";
@@ -111,7 +111,7 @@ export class XAdapter implements PlatformAdapter {
       summary: `Create X ${mode} "${release.title}" with ${assets.length} local media asset(s)`,
       requiresApproval: creator.platforms.x?.approval === "required",
       warnings: assets.length > 4
-        ? ["X supports a limited attachment set; only the first 4 selected assets will be uploaded"]
+        ? ["X supports at most 4 selected media assets; publication will be held until corrected"]
         : []
     };
   }
@@ -119,8 +119,12 @@ export class XAdapter implements PlatformAdapter {
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
     const accessToken = credential(creator, this.platform, "accessToken");
     const t = target(release, this.platform);
+    const assets = selectedAssets(release, this.platform).filter(a => a.path);
+    if (assets.length > 4) {
+      throw new HoldError(`X cannot silently discard media: ${assets.length} selected; at most 4 supported`);
+    }
     const mediaIds: string[] = [];
-    for (const asset of selectedAssets(release, this.platform).filter(a => a.path).slice(0, 4)) {
+    for (const asset of assets) {
       mediaIds.push(await uploadMedia(accessToken, asset.path!, asset.mimeType ?? "application/octet-stream"));
     }
 
