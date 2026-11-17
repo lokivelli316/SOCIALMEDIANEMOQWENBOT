@@ -284,6 +284,10 @@ test("mutation timeout is AmbiguousOutcomeError while GET timeout remains a safe
     fetchWithTimeout("https://example.test/get-timeout", { method: "GET" }, 10),
     (error: unknown) => error instanceof HoldError && !(error instanceof AmbiguousOutcomeError)
   );
+  await assert.rejects(
+    fetchWithTimeout("https://example.test/read-only-post", { method: "POST" }, 10, false),
+    (error: unknown) => error instanceof HoldError && !(error instanceof AmbiguousOutcomeError)
+  );
 });
 
 test("response body stall is bounded after headers arrive", async t => {
