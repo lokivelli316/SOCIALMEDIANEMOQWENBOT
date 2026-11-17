@@ -53,13 +53,14 @@ export function defaultString(
 export async function fetchWithTimeout(
   input: string | URL,
   init: RequestInit = {},
-  timeoutMs = Number(process.env.NEMOQWEN_FETCH_TIMEOUT_MS ?? "30000")
+  timeoutMs = Number(process.env.NEMOQWEN_FETCH_TIMEOUT_MS ?? "30000"),
+  remoteMutation = isMutationMethod(init.method)
 ): Promise<Response> {
   const bounded = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(Math.floor(timeoutMs), 300_000) : 30_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), bounded);
   const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
-  const mutation = isMutationMethod(init.method);
+  const mutation = remoteMutation;
   try {
     const response = await fetch(input, { ...init, signal });
     responseMeta.set(response, { timeoutMs: bounded, mutation });
