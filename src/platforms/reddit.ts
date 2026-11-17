@@ -65,10 +65,19 @@ export class RedditAdapter implements PlatformAdapter {
       const errors = body.json?.errors;
       if (Array.isArray(errors) && errors.length) throw new Error(`Reddit comment rejected: ${JSON.stringify(errors)}`);
       const thing = body.json?.data?.things?.[0]?.data ?? {};
+      const externalId = typeof thing.name === "string" ? thing.name : "";
+      if (!externalId) {
+        return {
+          platform: this.platform,
+          status: "submitted",
+          detail: "Reddit accepted the comment request without returning data.name; remote outcome is unverified. Do not blindly retry.",
+          raw: body as any
+        };
+      }
       return {
         platform: this.platform,
         status: "published",
-        externalId: typeof thing.name === "string" ? thing.name : undefined,
+        externalId,
         url: typeof thing.permalink === "string" ? `https://www.reddit.com${thing.permalink}` : undefined,
         raw: body as any
       };
@@ -96,7 +105,7 @@ export class RedditAdapter implements PlatformAdapter {
       const url = stringValue(t.url) ?? release.url;
       if (!url) throw new Error("Reddit link post requires targets.reddit.url or release.url");
       form.set("url", url);
-      form.set("resubmit", "true");
+      form.set("resubmit", stringValue(t.resubmit) === "true" ? "true" : "false");
     }
 
     const body = await readJsonResponse(await fetchWithTimeout("https://oauth.reddit.com/api/submit", {
@@ -108,10 +117,19 @@ export class RedditAdapter implements PlatformAdapter {
     const errors = body.json?.errors;
     if (Array.isArray(errors) && errors.length) throw new Error(`Reddit submit rejected: ${JSON.stringify(errors)}`);
     const data = body.json?.data ?? {};
+    const externalId = typeof data.name === "string" ? data.name : "";
+    if (!externalId) {
+      return {
+        platform: this.platform,
+        status: "submitted",
+        detail: "Reddit accepted the submission without returning data.name; remote outcome is unverified. Do not blindly retry.",
+        raw: body as any
+      };
+    }
     return {
       platform: this.platform,
       status: "published",
-      externalId: typeof data.name === "string" ? data.name : undefined,
+      externalId,
       url: typeof data.url === "string" ? data.url : undefined,
       raw: body as any
     };
