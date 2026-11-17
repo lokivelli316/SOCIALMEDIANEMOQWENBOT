@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { loadCreator, loadRelease } from "./core/config.js";
 import { loadLocalEnv } from "./core/env.js";
 import { NemoQwenOrchestrator } from "./core/orchestrator.js";
+import { ReceiptStore } from "./core/receipts.js";
 import { CREATOR_TYPES, PLATFORMS, type Platform } from "./types.js";
 
 function usage(): never {
@@ -9,8 +10,9 @@ function usage(): never {
     "Usage:",
     "  npm run cli -- creator-types",
     "  npm run cli -- plan <creator.json> <release.json> [platform]",
-    "  npm run cli -- publish <creator.json> <release.json> <platform> [--approve]",
-    "  npm run cli -- inspect <creator.json> <platform> <external-id>"
+    "  npm run cli -- publish <creator.json> <release.json> <platform> [--approve] [--retry]",
+    "  npm run cli -- inspect <creator.json> <platform> <external-id>",
+    "  npm run cli -- receipts-verify"
   ].join("\n"));
   process.exit(2);
 }
@@ -44,7 +46,8 @@ if (command === "creator-types") {
     creator,
     release,
     platform,
-    flags.includes("--approve")
+    flags.includes("--approve"),
+    flags.includes("--retry")
   );
   console.log(JSON.stringify(result, null, 2));
   if (result.status !== "published") process.exitCode = 1;
@@ -55,6 +58,10 @@ if (command === "creator-types") {
   const platform = parsePlatform(platformName);
   const snapshot = await new NemoQwenOrchestrator().inspect(creator, platform, externalId);
   console.log(JSON.stringify(snapshot, null, 2));
+} else if (command === "receipts-verify") {
+  const verification = await new ReceiptStore().verifyChain();
+  console.log(JSON.stringify(verification, null, 2));
+  if (!verification.valid) process.exitCode = 1;
 } else {
   usage();
 }

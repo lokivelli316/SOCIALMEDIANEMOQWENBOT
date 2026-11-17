@@ -70,7 +70,7 @@ export interface PublishPlan {
 
 export interface PublishResult {
   platform: Platform;
-  status: "published" | "hold" | "failed" | "planned";
+  status: "published" | "submitted" | "verifying" | "hold" | "failed" | "planned";
   externalId?: string;
   url?: string;
   detail?: string;
@@ -90,5 +90,8 @@ export interface Receipt {
   releaseId: string;
   platform: Platform;
   action: "plan" | "publish";
+  operationKey?: string;
   result: PublishResult;
+  previousReceiptHash?: string | null;
+  receiptHash?: string;
 }

@@ -1,6 +1,6 @@
-import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { boolValue, credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, boolValue, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const BASE = "https://open.tiktokapis.com";
 
@@ -27,7 +27,7 @@ export class TikTokAdapter implements PlatformAdapter {
       "Content-Type": "application/json; charset=UTF-8"
     };
 
-    const creatorInfo = await readJsonResponse(await fetch(`${BASE}/v2/post/publish/creator_info/query/`, {
+    const creatorInfo = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/creator_info/query/`, {
       method: "POST",
       headers
     }));
@@ -36,8 +36,15 @@ export class TikTokAdapter implements PlatformAdapter {
     const privacyLevel = stringValue(t.privacyLevel)
       ?? defaultString(creator, this.platform, "privacyLevel")
       ?? "SELF_ONLY";
+    const creatorInfoError = creatorInfo.error?.code;
+    if (creatorInfoError && creatorInfoError !== "ok") {
+      throw new HoldError(`TikTok creator-info preflight rejected: ${JSON.stringify(creatorInfo.error)}`);
+    }
     const options = creatorInfo.data?.privacy_level_options;
-    if (Array.isArray(options) && !options.includes(privacyLevel)) {
+    if (!Array.isArray(options)) {
+      throw new HoldError("TikTok creator-info preflight did not return privacy_level_options; publishing held");
+    }
+    if (!options.includes(privacyLevel)) {
       throw new Error(`TikTok privacy level ${privacyLevel} is not available for this creator: ${options.join(", ")}`);
     }
 
@@ -59,7 +66,7 @@ export class TikTokAdapter implements PlatformAdapter {
       }
     };
 
-    const body = await readJsonResponse(await fetch(`${BASE}/v2/post/publish/video/init/`, {
+    const body = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/video/init/`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload)
@@ -68,11 +75,41 @@ export class TikTokAdapter implements PlatformAdapter {
     const errorCode = body.error?.code;
     if (errorCode && errorCode !== "ok") throw new Error(`TikTok publish rejected: ${JSON.stringify(body.error)}`);
     const id = String(body.data?.publish_id ?? "");
+    if (!id) throw new HoldError("TikTok publish job acknowledgement contained no publish_id; operation requires reconciliation before retry");
     return {
       platform: this.platform,
-      status: "published",
-      externalId: id || undefined,
+      status: "submitted",
+      externalId: id,
       detail: "TikTok accepted the publish job; final post availability is asynchronous and must be verified separately.",
+      raw: body as any
+    };
+  }
+  async inspect(creator: CreatorProfile, externalId: string): Promise<ChannelSnapshot> {
+    const accessToken = credential(creator, this.platform, "accessToken");
+    const body = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/status/fetch/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8"
+      },
+      body: JSON.stringify({ publish_id: externalId })
+    }));
+    const errorCode = body.error?.code;
+    if (errorCode && errorCode !== "ok") {
+      throw new HoldError(`TikTok status readback rejected: ${JSON.stringify(body.error)}`);
+    }
+    const data = body.data ?? {};
+    return {
+      platform: this.platform,
+      externalId,
+      metrics: {
+        status: typeof data.status === "string" ? data.status : null,
+        fail_reason: typeof data.fail_reason === "string" ? data.fail_reason : null,
+        uploaded_bytes: typeof data.uploaded_bytes === "number" ? data.uploaded_bytes : null,
+        publicaly_available_post_id: Array.isArray(data.publicaly_available_post_id)
+          ? data.publicaly_available_post_id.map((value: unknown) => String(value))
+          : []
+      },
       raw: body as any
     };
   }

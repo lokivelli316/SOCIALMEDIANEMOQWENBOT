@@ -39,6 +39,28 @@ export function defaultString(
   return stringValue(creator.platforms[platform]?.defaults?.[key]);
 }
 
+export async function fetchWithTimeout(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs = Number(process.env.NEMOQWEN_FETCH_TIMEOUT_MS ?? "30000")
+): Promise<Response> {
+  const bounded = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(Math.floor(timeoutMs), 300_000) : 30_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), bounded);
+  try {
+    return await fetch(input, { ...init, signal: init.signal ?? controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new HoldError(
+        `Network timeout after ${bounded}ms; remote outcome may be unknown. Inspect receipts/platform state before retrying.`
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function readJsonResponse(response: Response): Promise<Record<string, any>> {
   const text = await response.text();
   let body: Record<string, any>;
