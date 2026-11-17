@@ -22,7 +22,7 @@ The following are baseline facts at the frozen commit. Reviewers may regression-
 10. **Receipt-chain verification is operator-visible** through `npm run cli -- receipts-verify`.
 11. **YouTube no longer buffers the full video in memory.** The existing resumable session sends bounded 8 MiB chunks and still requires readback before final publication claims.
 12. **Repo-native skill pack remains nine skills.** NVIDIA SkillEvaluator 0.9.0 keyless Tier-1 quality check executed against all nine: **9/9 PASS**, scores 83.0–89.8/100. This is static skill quality evidence, not proof of external runtime installation or live agent performance.
-13. The regular repository CI passed on the hardening head before merge: TypeScript check, unit tests, and native skill validation.
+13. The regular repository CI passed on the hardening head before merge: TypeScript check, **26/26 tests**, and native skill validation (**9/9 unique skills**).
 
 ## Durable evidence references
 
@@ -30,7 +30,7 @@ The following are baseline facts at the frozen commit. Reviewers may regression-
 - SkillEvaluator integration merge: `f2090de4ed137f1cd80055e7c3f9772a2679178d`.
 - SkillEvaluator run: GitHub Actions `44018005907`; 9/9 keyless Tier-1 checks passed. Artifact `mythos-skill-quality` was retained.
 - Consolidated hardening PR head: `f99192036e424bd91f8bacec27a9e2df460081ba`.
-- Consolidated hardening CI: GitHub Actions `44018763980`, PASS.
+- Consolidated hardening CI: GitHub Actions `44018763980`, PASS — `npm run check`, 26/26 tests, and 9/9 native skill validation.
 - Lap-2 frozen merge: `d8a294094813e886346808b2fe59197888ca1268`.
 - Superseded P1 drafts remain in PR history; they were closed, not erased.
 
