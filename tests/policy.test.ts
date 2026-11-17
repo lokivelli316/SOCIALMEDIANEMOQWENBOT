@@ -41,7 +41,7 @@ test("invalid approval values fail closed, even when --approve is supplied", () 
 test("missing and null approval values fail closed", () => {
   for (const mode of [undefined, null]) {
     const profile = creator("auto") as CreatorProfile & { platforms: Record<string, any> };
-    profile.platforms.x.approval = mode;
+    (profile.platforms.x as { approval?: unknown }).approval = mode;
     assert.equal(publishAuthority(profile, "x", false).allowed, false);
   }
 });
