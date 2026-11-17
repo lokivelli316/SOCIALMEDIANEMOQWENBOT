@@ -2,7 +2,7 @@
 
 - Upstream: https://github.com/NVIDIA/SkillEvaluator; reviewed source README and pyproject version `0.9.0`.
 - Target: existing **nine canonical** `.agents/skills/*/SKILL.md`. No replacement, deletion or auto-import.
-- Execution: `scripts/mythos-skill-audit.sh`, or the **manually dispatched** GitHub Actions workflow `MYTHOS keyless skill quality audit`.
+- Execution: `scripts/mythos-skill-audit.sh`, or the **pull-request-scoped and manually dispatchable** GitHub Actions workflow `MYTHOS keyless skill quality audit`.
 - Install on an authorized Python 3.12+ host: `python -m pip install 'skillevaluator==0.9.0'`.
 - From repository root: `bash scripts/mythos-skill-audit.sh`.
 - Output: `reports/mythos-skill-audit/<skill>/` JSON + CLI evidence per native skill, preserving per-skill failures.
@@ -12,4 +12,4 @@
 - Cost: the workflow is `workflow_dispatch` only; it does not automatically consume GitHub runner minutes on each push. Review account billing before manually dispatching.
 - Future Phase: after static qualification, run SkillEvaluator with/without skill impact trials under pinned task/evidence suites and appropriate budget, and record results to the existing Forge Relay/Infinite Brain ledgers. No model is allowed to certify its own success.
 
-**Status on creation:** SOURCE WIRED AS OPTIONAL CI TASK, installation/execution results HOLD.
+**Status:** SOURCE WIRED; the integration PR must retain the actual keyless SkillEvaluator execution result before merge.
