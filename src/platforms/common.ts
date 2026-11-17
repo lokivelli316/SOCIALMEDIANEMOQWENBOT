@@ -1,5 +1,6 @@
 import type { CreatorProfile, JsonValue, Platform, ReleaseManifest } from "../types.js";
 import { boundedRedactedDetail, redactSecrets, redactSecretText } from "../core/redaction.js";
+import { assertCredentialBinding } from "../core/credential-bindings.js";
 
 export class HoldError extends Error {
   readonly name: string = "HoldError";
@@ -25,8 +26,13 @@ export function credential(creator: CreatorProfile, platform: Platform, key: str
   const cfg = platformProfile(creator, platform);
   const envName = cfg.credentials[key];
   if (!envName) throw new HoldError(`${creator.id}/${platform} has no credential mapping for ${key}`);
+  try {
+    assertCredentialBinding(creator, platform, key, envName);
+  } catch {
+    throw new HoldError(`Credential reference is not operator-bound for ${creator.id}/${platform}/${key}`);
+  }
   const value = process.env[envName];
-  if (!value) throw new HoldError(`Missing environment variable ${envName} for ${creator.id}/${platform}`);
+  if (!value) throw new HoldError(`Missing configured credential for ${creator.id}/${platform}/${key}`);
   return value;
 }
 
