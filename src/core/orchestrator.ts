@@ -8,7 +8,8 @@ import type {
   Receipt,
   ReleaseManifest
 } from "../types.js";
-import { adapters } from "../platforms/index.js";
+import { internalAdapter, type AdapterResolver } from "../platforms/index.js";
+import { withAuthorizedPublish } from "./publish-context.js";
 import { AmbiguousOutcomeError, HoldError } from "../platforms/common.js";
 import { operationKeyFor } from "./operation.js";
 import { publishAuthority } from "./policy.js";
@@ -17,14 +18,17 @@ import { OperationLockedError, ReceiptStore } from "./receipts.js";
 export class NemoQwenOrchestrator {
   private readonly inFlight = new Map<string, Promise<PublishResult>>();
 
-  constructor(private readonly receipts = new ReceiptStore()) {}
+  constructor(
+    private readonly receipts = new ReceiptStore(),
+    private readonly adapterResolver: AdapterResolver = internalAdapter
+  ) {}
 
   plan(creator: CreatorProfile, release: ReleaseManifest, platform?: Platform): PublishPlan[] {
     if (platform && !creator.platforms[platform]?.enabled) return [];
     const platforms = platform
       ? [platform]
       : (Object.keys(creator.platforms) as Platform[]).filter(p => creator.platforms[p]?.enabled);
-    return platforms.map(p => adapters[p].plan(creator, release));
+    return platforms.map(p => this.adapterResolver(p).plan(creator, release));
   }
 
   async publish(
@@ -106,7 +110,7 @@ export class NemoQwenOrchestrator {
 
       let result: PublishResult;
       try {
-        result = await adapters[platform].publish(creator, release);
+        result = await withAuthorizedPublish(operationKey, () => this.adapterResolver(platform).publish(creator, release));
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         result = {
@@ -129,7 +133,7 @@ export class NemoQwenOrchestrator {
   }
 
   async inspect(creator: CreatorProfile, platform: Platform, externalId: string): Promise<ChannelSnapshot> {
-    const adapter = adapters[platform];
+    const adapter = this.adapterResolver(platform);
     if (!adapter.inspect) throw new HoldError(`${platform} readback is not implemented yet`);
     const snapshot = await adapter.inspect(creator, externalId);
     const receipt: Receipt = {
