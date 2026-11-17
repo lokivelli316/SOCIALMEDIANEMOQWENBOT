@@ -74,6 +74,20 @@ async function sleep(ms: number): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function syncDirectory(path: string): Promise<void> {
+  let handle;
+  try {
+    handle = await open(path, "r");
+    await handle.sync();
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // Some Windows/filesystem combinations do not permit directory fsync.
+    if (code !== "EINVAL" && code !== "EPERM" && code !== "ENOTSUP" && code !== "EISDIR") throw error;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
+
 export class ReceiptStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
@@ -171,7 +185,8 @@ export class ReceiptStore {
 
   private async appendSerialized(receipt: Receipt): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
-    const { text: existing } = await this.readTextState();
+    const state = await this.readTextState();
+    const existing = state.text;
     const parsed = parseLinesStrict(existing);
     const previous = [...parsed.records].reverse().find(item => typeof item.receiptHash === "string");
     const record: Receipt = {
@@ -200,6 +215,7 @@ export class ReceiptStore {
     } finally {
       await headHandle.close();
     }
+    if (!state.present) await syncDirectory(dirname(this.path));
   }
 
   async latestActionablePublish(
