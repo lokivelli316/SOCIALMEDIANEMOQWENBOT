@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
-import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class YouTubeAdapter implements PlatformAdapter {
   readonly platform = "youtube" as const;
@@ -69,6 +69,30 @@ export class YouTubeAdapter implements PlatformAdapter {
       status: "published",
       externalId: id || undefined,
       url: id ? `https://www.youtube.com/watch?v=${id}` : undefined,
+      raw: body as any
+    };
+  }
+  async inspect(creator: CreatorProfile, externalId: string): Promise<ChannelSnapshot> {
+    const accessToken = credential(creator, this.platform, "accessToken");
+    const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+    url.searchParams.set("part", "status,processingDetails,snippet");
+    url.searchParams.set("id", externalId);
+    const body = await readJsonResponse(await fetchWithTimeout(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }));
+    const item = Array.isArray(body.items) ? body.items[0] : undefined;
+    if (!item) throw new HoldError(`YouTube readback returned no video for ${externalId}`);
+    return {
+      platform: this.platform,
+      externalId,
+      metrics: {
+        privacy_status: typeof item.status?.privacyStatus === "string" ? item.status.privacyStatus : null,
+        upload_status: typeof item.status?.uploadStatus === "string" ? item.status.uploadStatus : null,
+        processing_status: typeof item.processingDetails?.processingStatus === "string"
+          ? item.processingDetails.processingStatus
+          : null,
+        published_at: typeof item.snippet?.publishedAt === "string" ? item.snippet.publishedAt : null
+      },
       raw: body as any
     };
   }
