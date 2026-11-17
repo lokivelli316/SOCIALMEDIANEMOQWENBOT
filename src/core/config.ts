@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { CREATOR_TYPES, PLATFORMS, type CreatorProfile, type Platform, type ReleaseManifest } from "../types.js";
+import { registerCredentialBindings } from "./credential-bindings.js";
 
 async function loadJson<T>(path: string): Promise<T> {
   const maxBytesRaw = Number(process.env.NEMOQWEN_MAX_MANIFEST_BYTES ?? "1048576");
@@ -49,6 +50,7 @@ export async function loadCreator(path: string): Promise<CreatorProfile> {
       }
     }
   }
+  await registerCredentialBindings(profile);
   return profile;
 }
 
