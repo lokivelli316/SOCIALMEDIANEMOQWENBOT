@@ -1,4 +1,4 @@
-import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
 import { HoldError, boolValue, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
@@ -81,6 +81,35 @@ export class TikTokAdapter implements PlatformAdapter {
       status: "submitted",
       externalId: id,
       detail: "TikTok accepted the publish job; final post availability is asynchronous and must be verified separately.",
+      raw: body as any
+    };
+  }
+  async inspect(creator: CreatorProfile, externalId: string): Promise<ChannelSnapshot> {
+    const accessToken = credential(creator, this.platform, "accessToken");
+    const body = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/status/fetch/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8"
+      },
+      body: JSON.stringify({ publish_id: externalId })
+    }));
+    const errorCode = body.error?.code;
+    if (errorCode && errorCode !== "ok") {
+      throw new HoldError(`TikTok status readback rejected: ${JSON.stringify(body.error)}`);
+    }
+    const data = body.data ?? {};
+    return {
+      platform: this.platform,
+      externalId,
+      metrics: {
+        status: typeof data.status === "string" ? data.status : null,
+        fail_reason: typeof data.fail_reason === "string" ? data.fail_reason : null,
+        uploaded_bytes: typeof data.uploaded_bytes === "number" ? data.uploaded_bytes : null,
+        publicaly_available_post_id: Array.isArray(data.publicaly_available_post_id)
+          ? data.publicaly_available_post_id.map((value: unknown) => String(value))
+          : []
+      },
       raw: body as any
     };
   }
