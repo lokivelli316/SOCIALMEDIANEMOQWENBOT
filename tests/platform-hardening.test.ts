@@ -4,6 +4,8 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CreatorProfile, ReleaseManifest } from "../src/types.js";
+import type { PlatformAdapter } from "../src/platforms/adapter.js";
+import { withAuthorizedPublish } from "../src/core/publish-context.js";
 import { AmbiguousOutcomeError, HoldError, fetchWithTimeout, readJsonResponse } from "../src/platforms/common.js";
 import { TikTokAdapter } from "../src/platforms/tiktok.js";
 import { FacebookAdapter } from "../src/platforms/facebook.js";
@@ -36,13 +38,28 @@ function response(value: unknown): Response {
 function mockFetch(t: { after: (fn: () => void) => void }, impl: typeof fetch): void {
   const previousFetch = globalThis.fetch;
   const previousToken = process.env.MYTHOS_FIXTURE_TOKEN;
+  const previousLegacy = process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
   process.env.MYTHOS_FIXTURE_TOKEN = "fixture-only";
+  process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS = "1";
   globalThis.fetch = impl;
   t.after(() => {
     globalThis.fetch = previousFetch;
     if (previousToken === undefined) delete process.env.MYTHOS_FIXTURE_TOKEN;
     else process.env.MYTHOS_FIXTURE_TOKEN = previousToken;
+    if (previousLegacy === undefined) delete process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+    else process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS = previousLegacy;
   });
+}
+
+async function authorizedPublish(
+  adapter: PlatformAdapter,
+  creatorProfile: CreatorProfile,
+  manifest: ReleaseManifest
+) {
+  return withAuthorizedPublish(
+    `test:${creatorProfile.id}:${manifest.id}:${adapter.platform}`,
+    () => adapter.publish(creatorProfile, manifest)
+  );
 }
 
 test("TikTok body-level creator-info rejection on HTTP 200 prevents post initiation", async t => {
@@ -51,7 +68,7 @@ test("TikTok body-level creator-info rejection on HTTP 200 prevents post initiat
     calls.push(String(url));
     return response({ error: { code: "access_denied", message: "creator info unavailable" } });
   });
-  await assert.rejects(new TikTokAdapter().publish(creator, release), HoldError);
+  await assert.rejects(authorizedPublish(new TikTokAdapter(), creator, release), HoldError);
   assert.equal(calls.length, 1);
   assert.match(calls[0]!, /creator_info/);
 });
@@ -62,7 +79,7 @@ test("TikTok missing privacy options fails closed rather than bypassing prefligh
     called++;
     return response({ error: { code: "ok" }, data: {} });
   });
-  await assert.rejects(new TikTokAdapter().publish(creator, release), /did not return privacy_level_options/);
+  await assert.rejects(authorizedPublish(new TikTokAdapter(), creator, release), /did not return privacy_level_options/);
   assert.equal(called, 1);
 });
 
@@ -72,14 +89,14 @@ test("TikTok init acknowledgment remains submitted until independently verified"
     response({ error: { code: "ok" }, data: { publish_id: "job-42" } })
   ];
   mockFetch(t, async () => responses.shift()!);
-  const result = await new TikTokAdapter().publish(creator, release);
+  const result = await authorizedPublish(new TikTokAdapter(), creator, release);
   assert.equal(result.status, "submitted");
   assert.equal(result.externalId, "job-42");
 });
 
 test("Facebook object acceptance remains submitted without readback", async t => {
   mockFetch(t, async () => response({ id: "1234_4567" }));
-  const result = await new FacebookAdapter().publish(creator, release);
+  const result = await authorizedPublish(new FacebookAdapter(), creator, release);
   assert.equal(result.status, "submitted");
   assert.equal(result.externalId, "1234_4567");
 });
@@ -92,7 +109,7 @@ test("X refuses five selected assets before uploading or publishing", async t =>
     assets: Array.from({ length: 5 }, (_, i) => ({ id: `asset-${i}`, kind: "image" as const, path: `/tmp/asset-${i}.png` }))
   };
   assert.match(new XAdapter().plan(creator, fiveAssets).warnings.join(" "), /held until corrected/);
-  await assert.rejects(new XAdapter().publish(creator, fiveAssets), HoldError);
+  await assert.rejects(authorizedPublish(new XAdapter(), creator, fiveAssets), HoldError);
   assert.equal(requests, 0);
 });
 
@@ -171,6 +188,12 @@ test("YouTube resumable upload sends bounded chunks instead of buffering the who
   t.after(() => rm(dir, { recursive: true, force: true }));
   const videoPath = join(dir, "video.bin");
   await writeFile(videoPath, Buffer.alloc(8 * 1024 * 1024 + 3, 7));
+  const previousRoots = process.env.NEMOQWEN_ASSET_ROOTS;
+  process.env.NEMOQWEN_ASSET_ROOTS = dir;
+  t.after(() => {
+    if (previousRoots === undefined) delete process.env.NEMOQWEN_ASSET_ROOTS;
+    else process.env.NEMOQWEN_ASSET_ROOTS = previousRoots;
+  });
 
   const ranges: string[] = [];
   let call = 0;
@@ -189,7 +212,7 @@ test("YouTube resumable upload sends bounded chunks instead of buffering the who
     });
   });
 
-  const result = await new YouTubeAdapter().publish(creator, {
+  const result = await authorizedPublish(new YouTubeAdapter(), creator, {
     id: "release-youtube",
     title: "Chunked",
     contentType: "video",
@@ -207,7 +230,7 @@ test("YouTube resumable upload sends bounded chunks instead of buffering the who
 
 test("X successful HTTP response without data.id is submitted, never published", async t => {
   mockFetch(t, async () => response({ data: {} }));
-  const result = await new XAdapter().publish(creator, { id: "x-no-id", title: "X no id", contentType: "text" });
+  const result = await authorizedPublish(new XAdapter(), creator, { id: "x-no-id", title: "X no id", contentType: "text" });
   assert.equal(result.status, "submitted");
   assert.equal(result.externalId, undefined);
   assert.match(result.detail ?? "", /without data.id/);
@@ -226,7 +249,7 @@ test("Reddit successful submit response without data.name is submitted, never pu
       reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } }
     }
   };
-  const result = await new RedditAdapter().publish(redditCreator, {
+  const result = await authorizedPublish(new RedditAdapter(), redditCreator, {
     id: "reddit-no-id", title: "No id", contentType: "link",
     url: "https://example.test/post",
     targets: { reddit: { subreddit: "test", kind: "link" } }
@@ -242,7 +265,7 @@ test("Reddit resubmit must be explicitly true in the manifest", async t => {
     submittedForm = init?.body as URLSearchParams;
     return response({ json: { errors: [], data: { name: "t3_ok", url: "https://reddit.test/t3_ok" } } });
   });
-  await new RedditAdapter().publish(creator, {
+  await authorizedPublish(new RedditAdapter(), creator, {
     id: "reddit-resubmit", title: "Explicit repost", contentType: "link",
     url: "https://example.test/post",
     targets: { reddit: { subreddit: "test", kind: "link", resubmit: true } }
@@ -256,7 +279,7 @@ test("HTTP 429 becomes HOLD with Retry-After evidence", async t => {
     headers: { "content-type": "application/json", "retry-after": "60" }
   }));
   await assert.rejects(
-    new XAdapter().publish(creator, { id: "x-429", title: "Rate limit", contentType: "text" }),
+    authorizedPublish(new XAdapter(), creator, { id: "x-429", title: "Rate limit", contentType: "text" }),
     (error: unknown) => error instanceof HoldError && /Retry-After: 60/.test(error.message)
   );
 });
@@ -305,6 +328,12 @@ test("YouTube 308 without Range does not skip the first chunk and no-progress is
   t.after(() => rm(dir, { recursive: true, force: true }));
   const videoPath = join(dir, "video.bin");
   await writeFile(videoPath, Buffer.alloc(1024, 5));
+  const previousRoots = process.env.NEMOQWEN_ASSET_ROOTS;
+  process.env.NEMOQWEN_ASSET_ROOTS = dir;
+  t.after(() => {
+    if (previousRoots === undefined) delete process.env.NEMOQWEN_ASSET_ROOTS;
+    else process.env.NEMOQWEN_ASSET_ROOTS = previousRoots;
+  });
 
   const ranges: string[] = [];
   let call = 0;
@@ -317,7 +346,7 @@ test("YouTube 308 without Range does not skip the first chunk and no-progress is
     return new Response("", { status: 308 });
   });
 
-  await assert.rejects(new YouTubeAdapter().publish(creator, {
+  await assert.rejects(authorizedPublish(new YouTubeAdapter(), creator, {
     id: "youtube-stuck",
     title: "Stuck",
     contentType: "video",
