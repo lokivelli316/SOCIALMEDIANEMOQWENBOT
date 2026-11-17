@@ -76,7 +76,7 @@ export class ReceiptStore {
     creatorId: string,
     releaseId: string,
     platform: Platform
-  ): Promise<Receipt | undefined> {
+  ): Promise<(Receipt & { result: PublishResult }) | undefined> {
     await this.writeQueue;
     const records = parseLines(await this.readText());
     for (let index = records.length - 1; index >= 0; index--) {
@@ -86,7 +86,7 @@ export class ReceiptStore {
           item.platform !== platform || item.action !== "publish") continue;
       const result = item.result as PublishResult;
       if (result.status === "hold" || result.status === "planned") continue;
-      return item;
+      return item as Receipt & { result: PublishResult };
     }
     return undefined;
   }
