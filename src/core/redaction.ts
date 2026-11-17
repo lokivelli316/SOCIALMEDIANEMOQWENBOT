@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 const SECRET_KEY = /(access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|authorization|password|secret)/i;
 
 export function redactSecretText(input: string): string {
@@ -20,4 +21,12 @@ export function redactSecrets(value: unknown): unknown {
     return result;
   }
   return value;
+}
+
+
+export function boundedRedactedDetail(input: string, maxChars = 4096): string {
+  const redacted = redactSecretText(input);
+  if (redacted.length <= maxChars) return redacted;
+  const digest = createHash("sha256").update(redacted).digest("hex");
+  return `${redacted.slice(0, maxChars)}… [TRUNCATED sha256=${digest}]`;
 }
