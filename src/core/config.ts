@@ -59,6 +59,36 @@ export async function loadRelease(path: string): Promise<ReleaseManifest> {
       typeof release.contentType !== "string" || !release.contentType.trim()) {
     throw new Error("Release requires id, title, and contentType");
   }
+  if (release.tags !== undefined) {
+    if (!Array.isArray(release.tags) || release.tags.some(tag => typeof tag !== "string")) {
+      throw new Error("Release tags must be an array of strings");
+    }
+  }
+  if (release.assets !== undefined) {
+    if (!Array.isArray(release.assets)) throw new Error("Release assets must be an array");
+    for (const [index, asset] of release.assets.entries()) {
+      if (!record(asset)) throw new Error(`Release assets[${index}] must be an object`);
+      if (typeof asset.id !== "string" || !asset.id.trim()) {
+        throw new Error(`Release assets[${index}].id must be a non-empty string`);
+      }
+      if (!["video", "image", "audio", "document", "other"].includes(String(asset.kind))) {
+        throw new Error(`Release assets[${index}].kind is invalid`);
+      }
+      for (const key of ["path", "url", "mimeType", "alt"] as const) {
+        if (asset[key] !== undefined && typeof asset[key] !== "string") {
+          throw new Error(`Release assets[${index}].${key} must be a string`);
+        }
+      }
+      if (asset.platforms !== undefined) {
+        if (!Array.isArray(asset.platforms)) throw new Error(`Release assets[${index}].platforms must be an array`);
+        for (const p of asset.platforms) {
+          if (!PLATFORMS.includes(p as Platform)) {
+            throw new Error(`Release assets[${index}] has unknown platform: ${String(p)}`);
+          }
+        }
+      }
+    }
+  }
   if (release.targets !== undefined) {
     if (!record(release.targets)) throw new Error("Release targets must be an object");
     for (const p of Object.keys(release.targets)) {
