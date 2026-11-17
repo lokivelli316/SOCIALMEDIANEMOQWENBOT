@@ -84,14 +84,17 @@ export interface ChannelSnapshot {
   raw?: JsonValue;
 }
 
+export type ReceiptResult = PublishResult | ChannelSnapshot;
+
 export interface Receipt {
   at: string;
   creatorId: string;
-  releaseId: string;
+  releaseId?: string;
+  externalId?: string;
   platform: Platform;
-  action: "plan" | "publish";
+  action: "plan" | "publish" | "inspect";
   operationKey?: string;
-  result: PublishResult;
+  result: ReceiptResult;
   previousReceiptHash?: string | null;
   receiptHash?: string;
 }
