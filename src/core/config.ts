@@ -1,7 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { CREATOR_TYPES, PLATFORMS, type CreatorProfile, type Platform, type ReleaseManifest } from "../types.js";
 
 async function loadJson<T>(path: string): Promise<T> {
+  const maxBytesRaw = Number(process.env.NEMOQWEN_MAX_MANIFEST_BYTES ?? "1048576");
+  const maxBytes = Number.isFinite(maxBytesRaw) && maxBytesRaw > 0 ? Math.floor(maxBytesRaw) : 1_048_576;
+  const info = await stat(path);
+  if (info.size > maxBytes) {
+    throw new Error(`JSON input ${path} is ${info.size} bytes; limit is ${maxBytes}`);
+  }
   return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
@@ -17,6 +23,12 @@ export async function loadCreator(path: string): Promise<CreatorProfile> {
     throw new Error("Creator profile requires id and displayName");
   }
   if (!CREATOR_TYPES.includes(profile.primaryType)) throw new Error(`Unknown creator type: ${profile.primaryType}`);
+  if (profile.secondaryTypes !== undefined) {
+    if (!Array.isArray(profile.secondaryTypes)) throw new Error("Creator secondaryTypes must be an array");
+    for (const type of profile.secondaryTypes) {
+      if (!CREATOR_TYPES.includes(type)) throw new Error(`Unknown secondary creator type: ${String(type)}`);
+    }
+  }
   if (!record(profile.platforms)) throw new Error("Creator profile requires platforms object");
   for (const p of Object.keys(profile.platforms)) {
     if (!PLATFORMS.includes(p as Platform)) throw new Error(`Unknown platform: ${p}`);

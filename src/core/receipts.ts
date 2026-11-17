@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { open, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { Platform, PublishResult, Receipt } from "../types.js";
+import { fileURLToPath } from "node:url";
+import type { Platform, PublishResult, Receipt, ReceiptResult } from "../types.js";
+import { redactSecretText } from "./redaction.js";
+
+export function defaultReceiptPath(): string {
+  return process.env.NEMOQWEN_RECEIPTS ?? fileURLToPath(new URL("../../.nemoqwen/receipts.jsonl", import.meta.url));
+}
 
 export interface ReceiptVerification {
   valid: boolean;
@@ -10,9 +16,12 @@ export interface ReceiptVerification {
   error?: string;
 }
 
-function safeResult(result: PublishResult): PublishResult {
-  const { raw: _raw, ...safe } = result;
-  return safe;
+function safeResult(result: ReceiptResult): ReceiptResult {
+  const { raw: _raw, ...safe } = result as ReceiptResult & { raw?: unknown };
+  if ("detail" in safe && typeof safe.detail === "string") {
+    return { ...safe, detail: redactSecretText(safe.detail) } as ReceiptResult;
+  }
+  return safe as ReceiptResult;
 }
 
 function payloadForHash(receipt: Receipt): Omit<Receipt, "receiptHash"> {
@@ -41,7 +50,7 @@ function parseLines(text: string): Receipt[] {
 export class ReceiptStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly path = ".nemoqwen/receipts.jsonl") {}
+  constructor(private readonly path = defaultReceiptPath()) {}
 
   async append(receipt: Receipt): Promise<void> {
     const operation = this.writeQueue.then(() => this.appendSerialized(receipt));
@@ -72,7 +81,7 @@ export class ReceiptStore {
     creatorId: string,
     releaseId: string,
     platform: Platform
-  ): Promise<Receipt | undefined> {
+  ): Promise<(Receipt & { result: PublishResult }) | undefined> {
     await this.writeQueue;
     const records = parseLines(await this.readText());
     for (let index = records.length - 1; index >= 0; index--) {
@@ -80,8 +89,9 @@ export class ReceiptStore {
       if (!item) continue;
       if (item.creatorId !== creatorId || item.releaseId !== releaseId ||
           item.platform !== platform || item.action !== "publish") continue;
-      if (item.result.status === "hold" || item.result.status === "planned") continue;
-      return item;
+      const result = item.result as PublishResult;
+      if (result.status === "hold" || result.status === "planned") continue;
+      return item as Receipt & { result: PublishResult };
     }
     return undefined;
   }
@@ -92,12 +102,14 @@ export class ReceiptStore {
     let legacyRecords = 0;
     let chainedRecords = 0;
     let previousHash: string | null = null;
-    for (const [index, line] of text.split("\n").filter(Boolean).entries()) {
+    for (const [index, line] of text.split("\n").entries()) {
+      const physicalLine = index + 1;
+      if (!line.trim()) continue;
       let item: Receipt;
       try {
         item = JSON.parse(line) as Receipt;
       } catch {
-        return { valid: false, legacyRecords, chainedRecords, error: `Invalid JSON at receipt line ${index + 1}` };
+        return { valid: false, legacyRecords, chainedRecords, error: `Invalid JSON at receipt line ${physicalLine}` };
       }
       if (!item.receiptHash) {
         legacyRecords++;
@@ -107,14 +119,14 @@ export class ReceiptStore {
       if ((item.previousReceiptHash ?? null) !== previousHash) {
         return {
           valid: false, legacyRecords, chainedRecords,
-          error: `Hash predecessor mismatch at receipt line ${index + 1}`
+          error: `Hash predecessor mismatch at receipt line ${physicalLine}`
         };
       }
       const expected = hashReceipt(item);
       if (item.receiptHash !== expected) {
         return {
           valid: false, legacyRecords, chainedRecords,
-          error: `Receipt hash mismatch at line ${index + 1}`
+          error: `Receipt hash mismatch at line ${physicalLine}`
         };
       }
       previousHash = item.receiptHash;

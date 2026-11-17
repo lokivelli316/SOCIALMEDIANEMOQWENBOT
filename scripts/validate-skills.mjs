@@ -3,6 +3,9 @@ import { join } from "node:path";
 
 const root = ".agents/skills";
 const entries = await readdir(root, { withFileTypes: true });
+const manifest = JSON.parse(await readFile("skills/manifest.json", "utf8"));
+const manifestNames = new Set((manifest.skills ?? []).map(skill => skill.name));
+const diskNames = new Set(entries.filter(entry => entry.isDirectory()).map(entry => entry.name));
 const names = new Set();
 const failures = [];
 let checked = 0;
@@ -46,6 +49,8 @@ for (const entry of entries) {
 }
 
 if (!checked) failures.push("no skills found");
+for (const name of diskNames) if (!manifestNames.has(name)) failures.push(`${name}: skill directory missing from skills/manifest.json`);
+for (const name of manifestNames) if (!diskNames.has(name)) failures.push(`${name}: manifest entry has no skill directory`);
 
 if (failures.length) {
   console.error("Skill validation failed:");

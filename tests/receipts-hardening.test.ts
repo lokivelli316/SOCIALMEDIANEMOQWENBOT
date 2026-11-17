@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NemoQwenOrchestrator } from "../src/core/orchestrator.js";
-import { ReceiptStore } from "../src/core/receipts.js";
+import { ReceiptStore, defaultReceiptPath } from "../src/core/receipts.js";
 import { adapters } from "../src/platforms/index.js";
-import type { CreatorProfile, Receipt, ReleaseManifest } from "../src/types.js";
+import type { CreatorProfile, PublishResult, Receipt, ReleaseManifest } from "../src/types.js";
 
 async function tempReceiptStore(): Promise<{ dir: string; path: string; store: ReceiptStore }> {
   const dir = await mkdtemp(join(tmpdir(), "nemoqwen-receipts-"));
@@ -23,7 +23,7 @@ const creator: CreatorProfile = {
 
 const release: ReleaseManifest = { id: "release-a", title: "Release A", contentType: "text" };
 
-function receipt(status: Receipt["result"]["status"]): Receipt {
+function receipt(status: PublishResult["status"]): Receipt {
   return {
     at: "2026-11-17T00:00:00.000Z",
     creatorId: creator.id,
@@ -120,4 +120,98 @@ test("explicit retry is the only duplicate-protection override and is receipted"
   assert.equal(adapterCalls, 1);
   const persisted = await readFile(fixture.path, "utf8");
   assert.match(persisted, /retry-remote/);
+});
+
+
+test("receipt detail is scrubbed even when an API error echoes a secret", async t => {
+  const fixture = await tempReceiptStore();
+  t.after(() => rm(fixture.dir, { recursive: true, force: true }));
+  await fixture.store.append({
+    ...receipt("failed"),
+    result: {
+      platform: "x",
+      status: "failed",
+      detail: "HTTP 400: access_token=super-secret-marker-123456 Bearer abcdefghijklmnop"
+    }
+  });
+  const persisted = await readFile(fixture.path, "utf8");
+  assert.doesNotMatch(persisted, /super-secret-marker|abcdefghijklmnop/);
+  assert.match(persisted, /REDACTED/);
+});
+
+test("same-operation concurrent publishes are single-flight in one orchestrator", async t => {
+  const fixture = await tempReceiptStore();
+  t.after(() => rm(fixture.dir, { recursive: true, force: true }));
+  const original = adapters.x.publish;
+  let calls = 0;
+  let releaseAdapter!: () => void;
+  let markStarted!: () => void;
+  const gate = new Promise<void>(resolve => { releaseAdapter = resolve; });
+  const started = new Promise<void>(resolve => { markStarted = resolve; });
+  adapters.x.publish = async () => {
+    calls++;
+    markStarted();
+    await gate;
+    return { platform: "x", status: "published", externalId: "only-one" };
+  };
+  t.after(() => { adapters.x.publish = original; });
+
+  const orchestrator = new NemoQwenOrchestrator(fixture.store);
+  const first = orchestrator.publish(creator, release, "x");
+  const second = orchestrator.publish(creator, release, "x");
+  await started;
+  assert.equal(calls, 1);
+  releaseAdapter();
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(a.externalId, "only-one");
+  assert.equal(b.externalId, "only-one");
+  assert.equal(calls, 1);
+});
+
+test("inspect readback writes a durable receipt while stripping raw response bodies", async t => {
+  const fixture = await tempReceiptStore();
+  t.after(() => rm(fixture.dir, { recursive: true, force: true }));
+  const original = adapters.x.inspect;
+  adapters.x.inspect = async (_creator, externalId) => ({
+    platform: "x",
+    externalId,
+    metrics: { like_count: 7 },
+    raw: { access_token: "must-not-persist" }
+  });
+  t.after(() => { adapters.x.inspect = original; });
+  const snapshot = await new NemoQwenOrchestrator(fixture.store).inspect(creator, "x", "tweet-7");
+  assert.equal(snapshot.metrics.like_count, 7);
+  const row = JSON.parse((await readFile(fixture.path, "utf8")).trim());
+  assert.equal(row.action, "inspect");
+  assert.equal(row.externalId, "tweet-7");
+  assert.equal(row.result.metrics.like_count, 7);
+  assert.equal(row.result.raw, undefined);
+  assert.doesNotMatch(JSON.stringify(row), /must-not-persist/);
+});
+
+test("receipt verification reports physical line number when blank lines precede corruption", async t => {
+  const fixture = await tempReceiptStore();
+  t.after(() => rm(fixture.dir, { recursive: true, force: true }));
+  await fixture.store.append(receipt("published"));
+  const first = (await readFile(fixture.path, "utf8")).trim();
+  await writeFile(fixture.path, "\n\n" + first + "\n{broken\n", "utf8");
+  const verification = await fixture.store.verifyChain();
+  assert.equal(verification.valid, false);
+  assert.match(verification.error ?? "", /line 4/);
+});
+
+
+test("default receipt path is independent of process working directory", async () => {
+  const original = process.cwd();
+  const first = defaultReceiptPath();
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-cwd-"));
+  try {
+    process.chdir(dir);
+    const second = defaultReceiptPath();
+    assert.equal(second, first);
+    assert.match(second, /\.nemoqwen[\\/]receipts\.jsonl$/);
+  } finally {
+    process.chdir(original);
+    await rm(dir, { recursive: true, force: true });
+  }
 });

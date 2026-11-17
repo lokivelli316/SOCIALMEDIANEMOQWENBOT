@@ -203,3 +203,70 @@ test("YouTube resumable upload sends bounded chunks instead of buffering the who
     "bytes 8388608-8388610/8388611"
   ]);
 });
+
+
+test("X successful HTTP response without data.id is submitted, never published", async t => {
+  mockFetch(t, async () => response({ data: {} }));
+  const result = await new XAdapter().publish(creator, { id: "x-no-id", title: "X no id", contentType: "text" });
+  assert.equal(result.status, "submitted");
+  assert.equal(result.externalId, undefined);
+  assert.match(result.detail ?? "", /without data.id/);
+});
+
+test("Reddit successful submit response without data.name is submitted, never published", async t => {
+  let submittedForm: URLSearchParams | undefined;
+  mockFetch(t, async (_url, init) => {
+    submittedForm = init?.body as URLSearchParams;
+    return response({ json: { errors: [], data: {} } });
+  });
+  const redditCreator: CreatorProfile = {
+    ...creator,
+    platforms: {
+      ...creator.platforms,
+      reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } }
+    }
+  };
+  const result = await new RedditAdapter().publish(redditCreator, {
+    id: "reddit-no-id", title: "No id", contentType: "link",
+    url: "https://example.test/post",
+    targets: { reddit: { subreddit: "test", kind: "link" } }
+  });
+  assert.equal(result.status, "submitted");
+  assert.equal(result.externalId, undefined);
+  assert.equal(submittedForm?.get("resubmit"), "false");
+});
+
+test("Reddit resubmit must be explicitly true in the manifest", async t => {
+  let submittedForm: URLSearchParams | undefined;
+  mockFetch(t, async (_url, init) => {
+    submittedForm = init?.body as URLSearchParams;
+    return response({ json: { errors: [], data: { name: "t3_ok", url: "https://reddit.test/t3_ok" } } });
+  });
+  await new RedditAdapter().publish(creator, {
+    id: "reddit-resubmit", title: "Explicit repost", contentType: "link",
+    url: "https://example.test/post",
+    targets: { reddit: { subreddit: "test", kind: "link", resubmit: true } }
+  });
+  assert.equal(submittedForm?.get("resubmit"), "true");
+});
+
+test("HTTP 429 becomes HOLD with Retry-After evidence", async t => {
+  mockFetch(t, async () => new Response(JSON.stringify({ error: { message: "slow down" } }), {
+    status: 429,
+    headers: { "content-type": "application/json", "retry-after": "60" }
+  }));
+  await assert.rejects(
+    new XAdapter().publish(creator, { id: "x-429", title: "Rate limit", contentType: "text" }),
+    (error: unknown) => error instanceof HoldError && /Retry-After: 60/.test(error.message)
+  );
+});
+
+test("caller abort signal is composed with fetch timeout signal", async t => {
+  mockFetch(t, ((_input, init) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+  })) as typeof fetch);
+  const controller = new AbortController();
+  const request = fetchWithTimeout("https://example.test/caller-abort", { signal: controller.signal }, 30_000);
+  controller.abort();
+  await assert.rejects(request, /Abort/);
+});

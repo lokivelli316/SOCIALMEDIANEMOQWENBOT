@@ -1,4 +1,5 @@
 import type { CreatorProfile, JsonValue, Platform, ReleaseManifest } from "../types.js";
+import { redactSecrets, redactSecretText } from "../core/redaction.js";
 
 export class HoldError extends Error {
   readonly name = "HoldError";
@@ -47,8 +48,9 @@ export async function fetchWithTimeout(
   const bounded = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(Math.floor(timeoutMs), 300_000) : 30_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), bounded);
+  const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
   try {
-    return await fetch(input, { ...init, signal: init.signal ?? controller.signal });
+    return await fetch(input, { ...init, signal });
   } catch (error) {
     if (controller.signal.aborted) {
       throw new HoldError(
@@ -70,7 +72,15 @@ export async function readJsonResponse(response: Response): Promise<Record<strin
     body = { raw: text };
   }
   if (!response.ok) {
-    const detail = typeof body.error === "object" ? JSON.stringify(body.error) : text;
+    const safeBody = redactSecrets(body) as Record<string, any>;
+    const detail = typeof safeBody.error === "object"
+      ? JSON.stringify(safeBody.error)
+      : redactSecretText(text);
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("retry-after");
+      const suffix = retryAfter ? ` Retry-After: ${retryAfter}.` : "";
+      throw new HoldError(`HTTP 429 rate limited.${suffix} Retry only after the platform window resets.`);
+    }
     throw new Error(`HTTP ${response.status}: ${detail || response.statusText}`);
   }
   return body;
