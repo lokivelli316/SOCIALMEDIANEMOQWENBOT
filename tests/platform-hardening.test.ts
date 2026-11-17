@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CreatorProfile, ReleaseManifest } from "../src/types.js";
-import { HoldError } from "../src/platforms/common.js";
+import { HoldError, fetchWithTimeout } from "../src/platforms/common.js";
 import { TikTokAdapter } from "../src/platforms/tiktok.js";
 import { FacebookAdapter } from "../src/platforms/facebook.js";
 import { RedditAdapter } from "../src/platforms/reddit.js";
 import { XAdapter } from "../src/platforms/x.js";
+import { YouTubeAdapter } from "../src/platforms/youtube.js";
 
 const creator: CreatorProfile = {
   id: "test-creator",
@@ -15,7 +16,8 @@ const creator: CreatorProfile = {
     tiktok: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } },
     facebook: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" }, defaults: { pageId: "1234" } },
     reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } },
-    x: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } }
+    x: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } },
+    youtube: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } }
   }
 };
 
@@ -98,4 +100,64 @@ test("Reddit absent metrics remain null, never fabricated as zero", async t => {
   for (const name of ["upvote_ratio", "num_comments", "ups"]) {
     assert.equal(snapshot.metrics[name], null);
   }
+});
+
+
+test("bounded fetch timeout produces HOLD rather than an unbounded network wait", async t => {
+  mockFetch(t, ((_input, init) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+  })) as typeof fetch);
+  await assert.rejects(fetchWithTimeout("https://example.test/hang", {}, 10), HoldError);
+});
+
+test("TikTok inspect uses publish status readback and preserves official status fields", async t => {
+  mockFetch(t, async (_url, init) => {
+    assert.equal(init?.method, "POST");
+    assert.match(String(init?.body), /job-42/);
+    return response({
+      data: {
+        status: "PUBLISH_COMPLETE",
+        uploaded_bytes: 12345,
+        publicaly_available_post_id: ["post-777"]
+      },
+      error: { code: "ok" }
+    });
+  });
+  const snapshot = await new TikTokAdapter().inspect(creator, "job-42");
+  assert.equal(snapshot.metrics.status, "PUBLISH_COMPLETE");
+  assert.equal(snapshot.metrics.uploaded_bytes, 12345);
+  assert.deepEqual(snapshot.metrics.publicaly_available_post_id, ["post-777"]);
+});
+
+test("Facebook inspect reads the returned object instead of treating submission as verification", async t => {
+  mockFetch(t, async url => {
+    assert.match(String(url), /1234_4567/);
+    return response({
+      id: "1234_4567",
+      is_published: true,
+      permalink_url: "https://facebook.example.test/post",
+      created_time: "2026-11-17T00:00:00+0000"
+    });
+  });
+  const snapshot = await new FacebookAdapter().inspect(creator, "1234_4567");
+  assert.equal(snapshot.metrics.is_published, true);
+  assert.equal(snapshot.metrics.permalink_url, "https://facebook.example.test/post");
+});
+
+test("YouTube inspect reads processing and privacy state for the uploaded video", async t => {
+  mockFetch(t, async url => {
+    assert.match(String(url), /youtube\/v3\/videos/);
+    assert.match(String(url), /video-99/);
+    return response({
+      items: [{
+        id: "video-99",
+        status: { privacyStatus: "private", uploadStatus: "uploaded" },
+        processingDetails: { processingStatus: "succeeded" },
+        snippet: { publishedAt: "2026-11-17T00:00:00Z" }
+      }]
+    });
+  });
+  const snapshot = await new YouTubeAdapter().inspect(creator, "video-99");
+  assert.equal(snapshot.metrics.privacy_status, "private");
+  assert.equal(snapshot.metrics.processing_status, "succeeded");
 });
