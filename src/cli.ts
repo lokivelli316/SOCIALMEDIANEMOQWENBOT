@@ -9,7 +9,7 @@ function usage(): never {
     "Usage:",
     "  npm run cli -- creator-types",
     "  npm run cli -- plan <creator.json> <release.json> [platform]",
-    "  npm run cli -- publish <creator.json> <release.json> <platform> [--approve]",
+    "  npm run cli -- publish <creator.json> <release.json> <platform> [--approve] [--retry]",
     "  npm run cli -- inspect <creator.json> <platform> <external-id>"
   ].join("\n"));
   process.exit(2);
@@ -44,7 +44,8 @@ if (command === "creator-types") {
     creator,
     release,
     platform,
-    flags.includes("--approve")
+    flags.includes("--approve"),
+    flags.includes("--retry")
   );
   console.log(JSON.stringify(result, null, 2));
   if (result.status !== "published") process.exitCode = 1;
