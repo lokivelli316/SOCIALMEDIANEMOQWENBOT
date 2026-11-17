@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NemoQwenOrchestrator } from "../src/core/orchestrator.js";
-import { ReceiptStore } from "../src/core/receipts.js";
+import { ReceiptStore, defaultReceiptPath } from "../src/core/receipts.js";
 import { adapters } from "../src/platforms/index.js";
 import type { CreatorProfile, PublishResult, Receipt, ReleaseManifest } from "../src/types.js";
 
@@ -198,4 +198,20 @@ test("receipt verification reports physical line number when blank lines precede
   const verification = await fixture.store.verifyChain();
   assert.equal(verification.valid, false);
   assert.match(verification.error ?? "", /line 4/);
+});
+
+
+test("default receipt path is independent of process working directory", async () => {
+  const original = process.cwd();
+  const first = defaultReceiptPath();
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-cwd-"));
+  try {
+    process.chdir(dir);
+    const second = defaultReceiptPath();
+    assert.equal(second, first);
+    assert.match(second, /\.nemoqwen[\\/]receipts\.jsonl$/);
+  } finally {
+    process.chdir(original);
+    await rm(dir, { recursive: true, force: true });
+  }
 });
