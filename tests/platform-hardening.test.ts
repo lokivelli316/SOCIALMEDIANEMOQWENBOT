@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CreatorProfile, ReleaseManifest } from "../src/types.js";
@@ -160,4 +163,43 @@ test("YouTube inspect reads processing and privacy state for the uploaded video"
   const snapshot = await new YouTubeAdapter().inspect(creator, "video-99");
   assert.equal(snapshot.metrics.privacy_status, "private");
   assert.equal(snapshot.metrics.processing_status, "succeeded");
+});
+
+
+test("YouTube resumable upload sends bounded chunks instead of buffering the whole file", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-youtube-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const videoPath = join(dir, "video.bin");
+  await writeFile(videoPath, Buffer.alloc(8 * 1024 * 1024 + 3, 7));
+
+  const ranges: string[] = [];
+  let call = 0;
+  mockFetch(t, async (_url, init) => {
+    call++;
+    if (call === 1) {
+      return new Response("", { status: 200, headers: { location: "https://upload.example.test/session" } });
+    }
+    ranges.push(String(new Headers(init?.headers).get("content-range") ?? ""));
+    if (call === 2) {
+      return new Response("", { status: 308, headers: { range: "bytes=0-8388607" } });
+    }
+    return new Response(JSON.stringify({ id: "video-chunked" }), {
+      status: 201,
+      headers: { "content-type": "application/json" }
+    });
+  });
+
+  const result = await new YouTubeAdapter().publish(creator, {
+    id: "release-youtube",
+    title: "Chunked",
+    contentType: "video",
+    assets: [{ id: "video", kind: "video", path: videoPath, mimeType: "video/mp4" }],
+    targets: { youtube: { privacyStatus: "private" } }
+  });
+  assert.equal(result.status, "published");
+  assert.equal(result.externalId, "video-chunked");
+  assert.deepEqual(ranges, [
+    "bytes 0-8388607/8388611",
+    "bytes 8388608-8388610/8388611"
+  ]);
 });
