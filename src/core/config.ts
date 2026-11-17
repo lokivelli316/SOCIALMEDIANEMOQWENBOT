@@ -1,24 +1,62 @@
 import { readFile } from "node:fs/promises";
-import { CREATOR_TYPES, PLATFORMS, type CreatorProfile, type ReleaseManifest } from "../types.js";
+import { CREATOR_TYPES, PLATFORMS, type CreatorProfile, type Platform, type ReleaseManifest } from "../types.js";
 
 async function loadJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 export async function loadCreator(path: string): Promise<CreatorProfile> {
   const profile = await loadJson<CreatorProfile>(path);
-  if (!profile.id || !profile.displayName) throw new Error("Creator profile requires id and displayName");
+  if (!record(profile)) throw new Error("Creator profile must be an object");
+  if (typeof profile.id !== "string" || !profile.id.trim() ||
+      typeof profile.displayName !== "string" || !profile.displayName.trim()) {
+    throw new Error("Creator profile requires id and displayName");
+  }
   if (!CREATOR_TYPES.includes(profile.primaryType)) throw new Error(`Unknown creator type: ${profile.primaryType}`);
+  if (!record(profile.platforms)) throw new Error("Creator profile requires platforms object");
   for (const p of Object.keys(profile.platforms)) {
-    if (!PLATFORMS.includes(p as (typeof PLATFORMS)[number])) throw new Error(`Unknown platform: ${p}`);
+    if (!PLATFORMS.includes(p as Platform)) throw new Error(`Unknown platform: ${p}`);
+    const cfg = profile.platforms[p as Platform];
+    if (!record(cfg)) throw new Error(`Creator ${profile.id}: platforms.${p} must be an object`);
+    if (typeof cfg.enabled !== "boolean") {
+      throw new Error(`Creator ${profile.id}: platforms.${p}.enabled must be a boolean`);
+    }
+    if (cfg.approval !== "required" && cfg.approval !== "draft" && cfg.approval !== "auto") {
+      throw new Error(`Creator ${profile.id}: platforms.${p}.approval must be required, draft, or auto`);
+    }
+    if (!record(cfg.credentials)) {
+      throw new Error(`Creator ${profile.id}: platforms.${p}.credentials must be an object`);
+    }
+    for (const [key, envName] of Object.entries(cfg.credentials)) {
+      if (typeof envName !== "string" || !envName.trim()) {
+        throw new Error(`Creator ${profile.id}: platforms.${p}.credentials.${key} must name an environment variable`);
+      }
+    }
   }
   return profile;
 }
 
 export async function loadRelease(path: string): Promise<ReleaseManifest> {
   const release = await loadJson<ReleaseManifest>(path);
-  if (!release.id || !release.title || !release.contentType) {
+  if (!record(release) || typeof release.id !== "string" || !release.id.trim() ||
+      typeof release.title !== "string" || !release.title.trim() ||
+      typeof release.contentType !== "string" || !release.contentType.trim()) {
     throw new Error("Release requires id, title, and contentType");
+  }
+  if (release.targets !== undefined) {
+    if (!record(release.targets)) throw new Error("Release targets must be an object");
+    for (const p of Object.keys(release.targets)) {
+      if (!PLATFORMS.includes(p as Platform)) {
+        throw new Error(`Unknown release target platform: ${p}`);
+      }
+      if (!record(release.targets[p as Platform])) {
+        throw new Error(`Release targets.${p} must be an object`);
+      }
+    }
   }
   return release;
 }
