@@ -90,5 +90,8 @@ export interface Receipt {
   releaseId: string;
   platform: Platform;
   action: "plan" | "publish";
+  operationKey?: string;
   result: PublishResult;
+  previousReceiptHash?: string | null;
+  receiptHash?: string;
 }
