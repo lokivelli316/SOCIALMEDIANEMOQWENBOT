@@ -7,7 +7,7 @@ import type {
   ReleaseManifest
 } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { HoldError, credential, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, credential, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const MEDIA_URL = "https://api.x.com/2/media/upload";
 const POST_URL = "https://api.x.com/2/tweets";
@@ -29,7 +29,7 @@ async function uploadMedia(accessToken: string, path: string, mimeType: string):
   initUrl.searchParams.set("media_type", mimeType);
   initUrl.searchParams.set("media_category", mediaCategory(mimeType));
 
-  const init = await readJsonResponse(await fetch(initUrl, {
+  const init = await readJsonResponse(await fetchWithTimeout(initUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` }
   }));
@@ -56,7 +56,7 @@ async function uploadMedia(accessToken: string, path: string, mimeType: string):
         "chunk"
       );
 
-      const response = await fetch(MEDIA_URL, {
+      const response = await fetchWithTimeout(MEDIA_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}` },
         body: form
@@ -72,7 +72,7 @@ async function uploadMedia(accessToken: string, path: string, mimeType: string):
   const finalizeUrl = new URL(MEDIA_URL);
   finalizeUrl.searchParams.set("command", "FINALIZE");
   finalizeUrl.searchParams.set("media_id", mediaId);
-  let finalized = await readJsonResponse(await fetch(finalizeUrl, {
+  let finalized = await readJsonResponse(await fetchWithTimeout(finalizeUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` }
   }));
@@ -88,7 +88,7 @@ async function uploadMedia(accessToken: string, path: string, mimeType: string):
     const statusUrl = new URL(MEDIA_URL);
     statusUrl.searchParams.set("command", "STATUS");
     statusUrl.searchParams.set("media_id", mediaId);
-    finalized = await readJsonResponse(await fetch(statusUrl, {
+    finalized = await readJsonResponse(await fetchWithTimeout(statusUrl, {
       headers: { Authorization: `Bearer ${accessToken}` }
     }));
   }
@@ -139,7 +139,7 @@ export class XAdapter implements PlatformAdapter {
     const quotePostId = stringValue(t.quotePostId);
     if (quotePostId) payload.quote_tweet_id = quotePostId;
 
-    const body = await readJsonResponse(await fetch(POST_URL, {
+    const body = await readJsonResponse(await fetchWithTimeout(POST_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -162,7 +162,7 @@ export class XAdapter implements PlatformAdapter {
     const accessToken = credential(creator, this.platform, "accessToken");
     const url = new URL(`https://api.x.com/2/tweets/${encodeURIComponent(externalId)}`);
     url.searchParams.set("tweet.fields", "created_at,public_metrics,possibly_sensitive");
-    const body = await readJsonResponse(await fetch(url, {
+    const body = await readJsonResponse(await fetchWithTimeout(url, {
       headers: { Authorization: `Bearer ${accessToken}` }
     }));
     const data = body.data ?? {};
