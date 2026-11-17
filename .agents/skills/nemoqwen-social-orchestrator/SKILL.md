@@ -55,19 +55,20 @@ Do not hard-code generic "best times," hashtag counts, or engagement folklore as
 
 ## Failure model
 
-Use truthful distinct states:
+Use the runtime `PublishResult.status` vocabulary exactly when reporting adapter results:
 
 ```text
 PLANNED
 HOLD
+SUBMITTED
+VERIFYING
 PUBLISHED
 FAILED
-DEGRADED
-UNCONFIGURED
-UNAVAILABLE
 ```
 
-A submitted asynchronous job is not equivalent to a verified public post.
+Operational surfaces may separately describe a lane as `DEGRADED`, `UNCONFIGURED`, or `UNAVAILABLE`, but those labels are not substitutes for a runtime publish status.
+
+A submitted asynchronous job is not equivalent to a verified public post. A `VERIFYING` result means the remote outcome is ambiguous or still requires reconciliation and MUST NOT be blindly replayed.
 
 ## Output
 
