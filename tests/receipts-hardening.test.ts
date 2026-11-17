@@ -145,9 +145,12 @@ test("same-operation concurrent publishes are single-flight in one orchestrator"
   const original = adapters.x.publish;
   let calls = 0;
   let releaseAdapter!: () => void;
+  let markStarted!: () => void;
   const gate = new Promise<void>(resolve => { releaseAdapter = resolve; });
+  const started = new Promise<void>(resolve => { markStarted = resolve; });
   adapters.x.publish = async () => {
     calls++;
+    markStarted();
     await gate;
     return { platform: "x", status: "published", externalId: "only-one" };
   };
@@ -156,7 +159,7 @@ test("same-operation concurrent publishes are single-flight in one orchestrator"
   const orchestrator = new NemoQwenOrchestrator(fixture.store);
   const first = orchestrator.publish(creator, release, "x");
   const second = orchestrator.publish(creator, release, "x");
-  await new Promise(resolve => setImmediate(resolve));
+  await started;
   assert.equal(calls, 1);
   releaseAdapter();
   const [a, b] = await Promise.all([first, second]);
