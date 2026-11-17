@@ -9,7 +9,7 @@ import type {
 } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
 import { requireAuthorizedPublish } from "../core/publish-context.js";
-import { openTrustedAsset } from "../core/asset-policy.js";
+import { AssetPolicyError, openTrustedAsset } from "../core/asset-policy.js";
 import { HoldError, credential, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const MEDIA_URL = "https://api.x.com/2/media/upload";
@@ -48,7 +48,13 @@ async function uploadMedia(
     throw new HoldError(`X local asset ${asset.id} requires mimeType before upload; category must not be guessed`);
   }
 
-  const trusted = await openTrustedAsset(release, asset.path);
+  let trusted;
+  try {
+    trusted = await openTrustedAsset(release, asset.path);
+  } catch (error) {
+    if (error instanceof AssetPolicyError) throw new HoldError(error.message);
+    throw error;
+  }
   try {
     if (trusted.size === 0) throw new HoldError(`X media asset ${asset.id} is empty`);
 
