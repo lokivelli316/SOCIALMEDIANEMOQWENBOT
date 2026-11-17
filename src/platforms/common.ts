@@ -1,8 +1,18 @@
 import type { CreatorProfile, JsonValue, Platform, ReleaseManifest } from "../types.js";
-import { redactSecrets, redactSecretText } from "../core/redaction.js";
+import { boundedRedactedDetail, redactSecrets, redactSecretText } from "../core/redaction.js";
 
 export class HoldError extends Error {
   readonly name = "HoldError";
+}
+
+export class AmbiguousOutcomeError extends HoldError {
+  readonly name = "AmbiguousOutcomeError";
+}
+
+const responseMeta = new WeakMap<Response, { timeoutMs: number; mutation: boolean }>();
+
+function isMutationMethod(method: string | undefined): boolean {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes((method ?? "GET").toUpperCase());
 }
 
 export function platformProfile(creator: CreatorProfile, platform: Platform) {
@@ -49,13 +59,16 @@ export async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), bounded);
   const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
+  const mutation = isMutationMethod(init.method);
   try {
-    return await fetch(input, { ...init, signal });
+    const response = await fetch(input, { ...init, signal });
+    responseMeta.set(response, { timeoutMs: bounded, mutation });
+    return response;
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new HoldError(
-        `Network timeout after ${bounded}ms; remote outcome may be unknown. Inspect receipts/platform state before retrying.`
-      );
+      const message = `Network timeout after ${bounded}ms; remote outcome may be unknown. Inspect receipts/platform state before retrying.`;
+      if (mutation) throw new AmbiguousOutcomeError(message);
+      throw new HoldError(message);
     }
     throw error;
   } finally {
@@ -63,8 +76,47 @@ export async function fetchWithTimeout(
   }
 }
 
+async function readBodyWithTimeout(response: Response): Promise<string> {
+  const meta = responseMeta.get(response) ?? {
+    timeoutMs: Number(process.env.NEMOQWEN_FETCH_TIMEOUT_MS ?? "30000"),
+    mutation: false
+  };
+  const bounded = Number.isFinite(meta.timeoutMs) && meta.timeoutMs > 0
+    ? Math.min(Math.floor(meta.timeoutMs), 300_000)
+    : 30_000;
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      void reader.cancel().catch(() => undefined);
+      const message = `Response body timeout after ${bounded}ms; remote outcome may be unknown. Inspect receipts/platform state before retrying.`;
+      reject(meta.mutation ? new AmbiguousOutcomeError(message) : new HoldError(message));
+    }, bounded);
+  });
+
+  const consume = (async () => {
+    let text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  })();
+
+  try {
+    return await Promise.race([consume, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function readJsonResponse(response: Response): Promise<Record<string, any>> {
-  const text = await response.text();
+  const text = await readBodyWithTimeout(response);
   let body: Record<string, any>;
   try {
     body = text ? JSON.parse(text) as Record<string, any> : {};
@@ -81,7 +133,7 @@ export async function readJsonResponse(response: Response): Promise<Record<strin
       const suffix = retryAfter ? ` Retry-After: ${retryAfter}.` : "";
       throw new HoldError(`HTTP 429 rate limited.${suffix} Retry only after the platform window resets.`);
     }
-    throw new Error(`HTTP ${response.status}: ${detail || response.statusText}`);
+    throw new Error(`HTTP ${response.status}: ${boundedRedactedDetail(detail || response.statusText)}`);
   }
   return body;
 }
