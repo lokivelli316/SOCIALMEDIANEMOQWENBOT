@@ -1,5 +1,10 @@
 name: MYTHOS keyless skill quality audit
 on:
+  pull_request:
+    paths:
+      - '.agents/skills/**'
+      - 'scripts/mythos-skill-audit.sh'
+      - '.github/workflows/mythos-skill-audit.yml'
   workflow_dispatch:
 
 permissions:
