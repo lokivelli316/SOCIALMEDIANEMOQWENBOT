@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, mkdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Platform, PublishResult, Receipt, ReceiptResult } from "../types.js";
 import { redactSecretText } from "./redaction.js";
 
@@ -46,7 +46,7 @@ function parseLines(text: string): Receipt[] {
 export class ReceiptStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly path = process.env.NEMOQWEN_RECEIPTS ?? join(homedir(), ".nemoqwen", "receipts.jsonl")) {}
+  constructor(private readonly path = process.env.NEMOQWEN_RECEIPTS ?? fileURLToPath(new URL("../../.nemoqwen/receipts.jsonl", import.meta.url))) {}
 
   async append(receipt: Receipt): Promise<void> {
     const operation = this.writeQueue.then(() => this.appendSerialized(receipt));
