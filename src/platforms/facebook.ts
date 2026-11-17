@@ -1,4 +1,4 @@
-import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
 import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
@@ -61,6 +61,25 @@ export class FacebookAdapter implements PlatformAdapter {
       detail: videoUrl
         ? "Facebook accepted the video upload; transcoding and public visibility require readback."
         : "Facebook accepted the feed request; public visibility has not been verified by readback.",
+      raw: body as any
+    };
+  }
+  async inspect(creator: CreatorProfile, externalId: string): Promise<ChannelSnapshot> {
+    const accessToken = credential(creator, this.platform, "accessToken");
+    const url = new URL(`https://graph.facebook.com/v27.0/${encodeURIComponent(externalId)}`);
+    url.searchParams.set("fields", "id,is_published,permalink_url,created_time");
+    const body = await readJsonResponse(await fetchWithTimeout(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }));
+    if (body.error) throw new HoldError(`Facebook readback failed: ${JSON.stringify(body.error)}`);
+    return {
+      platform: this.platform,
+      externalId,
+      metrics: {
+        is_published: typeof body.is_published === "boolean" ? body.is_published : null,
+        permalink_url: typeof body.permalink_url === "string" ? body.permalink_url : null,
+        created_time: typeof body.created_time === "string" ? body.created_time : null
+      },
       raw: body as any
     };
   }
