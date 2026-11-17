@@ -6,10 +6,18 @@ import { TikTokAdapter } from "./tiktok.js";
 import { XAdapter } from "./x.js";
 import { YouTubeAdapter } from "./youtube.js";
 
-export const adapters: Record<Platform, PlatformAdapter> = {
+const adapters: Readonly<Record<Platform, PlatformAdapter>> = Object.freeze({
   facebook: new FacebookAdapter(),
   tiktok: new TikTokAdapter(),
   youtube: new YouTubeAdapter(),
   reddit: new RedditAdapter(),
   x: new XAdapter()
-};
+});
+
+export type AdapterResolver = (platform: Platform) => PlatformAdapter;
+
+/**
+ * Internal core resolver. Not part of the package public API.
+ * Production mutations still require the runtime publish context guard in each adapter.
+ */
+export const internalAdapter: AdapterResolver = (platform) => adapters[platform];
