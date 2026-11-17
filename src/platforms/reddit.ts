@@ -105,7 +105,7 @@ export class RedditAdapter implements PlatformAdapter {
       const url = stringValue(t.url) ?? release.url;
       if (!url) throw new Error("Reddit link post requires targets.reddit.url or release.url");
       form.set("url", url);
-      form.set("resubmit", stringValue(t.resubmit) === "true" ? "true" : "false");
+      form.set("resubmit", t.resubmit === true ? "true" : "false");
     }
 
     const body = await readJsonResponse(await fetchWithTimeout("https://oauth.reddit.com/api/submit", {
