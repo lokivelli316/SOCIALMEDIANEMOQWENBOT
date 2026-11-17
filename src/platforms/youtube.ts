@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
 import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
@@ -53,15 +53,41 @@ export class YouTubeAdapter implements PlatformAdapter {
     const location = init.headers.get("location");
     if (!location) throw new Error("YouTube resumable upload did not return a Location header");
 
-    const bytes = await readFile(asset.path);
-    const body = await readJsonResponse(await fetchWithTimeout(location, {
-      method: "PUT",
-      headers: {
-        "Content-Type": mime,
-        "Content-Length": String(bytes.length)
-      },
-      body: bytes
-    }));
+    const chunkSize = 8 * 1024 * 1024; // 8 MiB, a multiple of YouTube's 256 KiB chunk requirement.
+    const handle = await open(asset.path, "r");
+    let body: Record<string, any> | undefined;
+    try {
+      let offset = 0;
+      while (offset < info.size) {
+        const requested = Math.min(chunkSize, info.size - offset);
+        const buffer = Buffer.allocUnsafe(requested);
+        const { bytesRead } = await handle.read(buffer, 0, requested, offset);
+        if (bytesRead <= 0) throw new HoldError(`YouTube upload source ended unexpectedly at byte ${offset}`);
+        const lastByte = offset + bytesRead - 1;
+        const response = await fetchWithTimeout(location, {
+          method: "PUT",
+          headers: {
+            "Content-Type": mime,
+            "Content-Length": String(bytesRead),
+            "Content-Range": `bytes ${offset}-${lastByte}/${info.size}`
+          },
+          body: buffer.subarray(0, bytesRead)
+        }, 120_000);
+
+        if (response.status === 308) {
+          const range = response.headers.get("range");
+          const match = range?.match(/bytes=0-(\d+)/i);
+          offset = match ? Number(match[1]) + 1 : lastByte + 1;
+          continue;
+        }
+
+        body = await readJsonResponse(response);
+        offset = info.size;
+      }
+    } finally {
+      await handle.close();
+    }
+    if (!body) throw new HoldError("YouTube resumable upload ended without a final video resource");
 
     const id = String(body.id ?? "");
     return {
