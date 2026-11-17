@@ -15,6 +15,7 @@ if [[ ! -d "$root" ]]; then
   exit 2
 fi
 mkdir -p "$output"
+expected="$(node -e 'const m=JSON.parse(require("fs").readFileSync("skills/manifest.json","utf8")); process.stdout.write(String((m.skills||[]).length))')"
 count=0
 failed=0
 for file in "$root"/*/SKILL.md; do
@@ -28,8 +29,8 @@ for file in "$root"/*/SKILL.md; do
     failed=$((failed + 1))
   fi
 done
-if [[ "$count" -ne 9 ]]; then
-  echo "HOLD: expected nine canonical skill directories; found $count" >&2
+if [[ "$count" -ne "$expected" ]]; then
+  echo "HOLD: skills/manifest.json expects $expected canonical skill directories; found $count" >&2
   exit 2
 fi
 if [[ "$failed" -ne 0 ]]; then
