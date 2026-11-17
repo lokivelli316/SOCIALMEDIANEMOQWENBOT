@@ -29,3 +29,15 @@ test("plans enabled platforms for a mixed creator profile", () => {
   assert.deepEqual(plans.map(p => p.platform).sort(), ["reddit", "x"]);
   assert.equal(plans.every(p => p.requiresApproval), true);
 });
+
+
+test("explicit plan request respects disabled platform kill switch", () => {
+  const creator: CreatorProfile = {
+    id: "disabled",
+    displayName: "Disabled",
+    primaryType: "custom",
+    platforms: { x: { enabled: false, approval: "required", credentials: {} } }
+  };
+  const release: ReleaseManifest = { id: "r-disabled", title: "No plan", contentType: "text" };
+  assert.deepEqual(new NemoQwenOrchestrator().plan(creator, release, "x"), []);
+});
