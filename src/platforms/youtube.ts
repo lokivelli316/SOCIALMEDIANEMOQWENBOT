@@ -1,6 +1,7 @@
 import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import { openTrustedAsset } from "../core/asset-policy.js";
 import type { PlatformAdapter } from "./adapter.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
 import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class YouTubeAdapter implements PlatformAdapter {
@@ -19,6 +20,7 @@ export class YouTubeAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const asset = selectedAssets(release, this.platform).find(a => a.kind === "video" && a.path);
     if (!asset?.path) throw new Error("YouTube upload requires a local video asset path");
