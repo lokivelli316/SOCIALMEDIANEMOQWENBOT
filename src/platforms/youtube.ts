@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class YouTubeAdapter implements PlatformAdapter {
   readonly platform = "youtube" as const;
@@ -39,7 +39,7 @@ export class YouTubeAdapter implements PlatformAdapter {
       status: { privacyStatus }
     };
 
-    const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
+    const init = await fetchWithTimeout("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -54,7 +54,7 @@ export class YouTubeAdapter implements PlatformAdapter {
     if (!location) throw new Error("YouTube resumable upload did not return a Location header");
 
     const bytes = await readFile(asset.path);
-    const body = await readJsonResponse(await fetch(location, {
+    const body = await readJsonResponse(await fetchWithTimeout(location, {
       method: "PUT",
       headers: {
         "Content-Type": mime,
