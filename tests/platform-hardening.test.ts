@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CreatorProfile, ReleaseManifest } from "../src/types.js";
 import type { PlatformAdapter } from "../src/platforms/adapter.js";
-import { withAuthorizedPublish } from "../src/core/publish-context.js";
+import { DirectAdapterPublishError, withAuthorizedPublish } from "../src/core/publish-context.js";
 import { AmbiguousOutcomeError, HoldError, fetchWithTimeout, readJsonResponse } from "../src/platforms/common.js";
 import { TikTokAdapter } from "../src/platforms/tiktok.js";
 import { FacebookAdapter } from "../src/platforms/facebook.js";
@@ -20,7 +20,7 @@ const creator: CreatorProfile = {
   platforms: {
     tiktok: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } },
     facebook: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" }, defaults: { pageId: "1234" } },
-    reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } },
+    reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" }, defaults: { userAgent: "script:nemoqwen-test:0.1.0 (by /u/nemoqwen_test)" } },
     x: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } },
     youtube: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } }
   }
@@ -246,7 +246,7 @@ test("Reddit successful submit response without data.name is submitted, never pu
     ...creator,
     platforms: {
       ...creator.platforms,
-      reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" } }
+      reddit: { enabled: true, approval: "required", credentials: { accessToken: "MYTHOS_FIXTURE_TOKEN" }, defaults: { userAgent: "script:nemoqwen-test:0.1.0 (by /u/nemoqwen_test)" } }
     }
   };
   const result = await authorizedPublish(new RedditAdapter(), redditCreator, {
@@ -280,7 +280,7 @@ test("HTTP 429 becomes HOLD with Retry-After evidence", async t => {
   }));
   await assert.rejects(
     authorizedPublish(new XAdapter(), creator, { id: "x-429", title: "Rate limit", contentType: "text" }),
-    (error: unknown) => error instanceof HoldError && /Retry-After: 60/.test(error.message)
+    (error: unknown) => error instanceof HoldError && /Retry-After=60/.test(error.message)
   );
 });
 
@@ -359,4 +359,178 @@ test("YouTube 308 without Range does not skip the first chunk and no-progress is
     "bytes 0-1023/1024",
     "bytes 0-1023/1024"
   ]);
+});
+
+
+test("direct adapter publish is rejected before any network call", async t => {
+  let requests = 0;
+  mockFetch(t, async () => {
+    requests++;
+    return response({ data: { id: "should-not-happen" } });
+  });
+  await assert.rejects(
+    new XAdapter().publish(creator, { id: "direct-bypass", title: "No", contentType: "text" }),
+    DirectAdapterPublishError
+  );
+  assert.equal(requests, 0);
+});
+
+test("HTTP account-state and server ambiguity map to truthful classes", async t => {
+  const responses = [
+    new Response(JSON.stringify({ error: { message: "token expired" } }), {
+      status: 401, headers: { "content-type": "application/json" }
+    }),
+    new Response(JSON.stringify({ error: { message: "not authorized" } }), {
+      status: 403, headers: { "content-type": "application/json" }
+    }),
+    new Response(JSON.stringify({ error: { message: "busy" } }), {
+      status: 500, headers: { "content-type": "application/json" }
+    })
+  ];
+  mockFetch(t, async () => responses.shift()!);
+
+  await assert.rejects(
+    authorizedPublish(new XAdapter(), creator, { id: "x-401", title: "Auth", contentType: "text" }),
+    (error: unknown) => error instanceof HoldError && !(error instanceof AmbiguousOutcomeError)
+  );
+  await assert.rejects(
+    authorizedPublish(new XAdapter(), creator, { id: "x-403", title: "Scope", contentType: "text" }),
+    (error: unknown) => error instanceof HoldError && !(error instanceof AmbiguousOutcomeError)
+  );
+  await assert.rejects(
+    authorizedPublish(new XAdapter(), creator, { id: "x-500", title: "Server", contentType: "text" }),
+    AmbiguousOutcomeError
+  );
+});
+
+test("X media upload uses current v2 initialize/append/finalize paths", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-x-v2-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const mediaPath = join(dir, "clip.mp4");
+  await writeFile(mediaPath, Buffer.alloc(1024, 3));
+
+  const previousRoots = process.env.NEMOQWEN_ASSET_ROOTS;
+  process.env.NEMOQWEN_ASSET_ROOTS = dir;
+  t.after(() => {
+    if (previousRoots === undefined) delete process.env.NEMOQWEN_ASSET_ROOTS;
+    else process.env.NEMOQWEN_ASSET_ROOTS = previousRoots;
+  });
+
+  const calls: Array<{ url: string; method: string; body: unknown; headers: Headers }> = [];
+  mockFetch(t, async (input, init) => {
+    const url = String(input);
+    const headers = new Headers(init?.headers);
+    calls.push({ url, method: init?.method ?? "GET", body: init?.body, headers });
+    if (url.endsWith("/initialize")) {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.media_type, "video/mp4");
+      assert.equal(body.total_bytes, 1024);
+      assert.equal(body.media_category, "tweet_video");
+      return response({ data: { id: "media-1" } });
+    }
+    if (url.endsWith("/media-1/append")) {
+      assert.ok(init?.body instanceof FormData);
+      const form = init.body as FormData;
+      assert.equal(form.get("segment_index"), "0");
+      assert.equal(form.get("command"), null);
+      assert.equal(form.get("media_id"), null);
+      return new Response("", { status: 204 });
+    }
+    if (url.endsWith("/media-1/finalize")) {
+      return response({ data: { id: "media-1" } });
+    }
+    if (url === "https://api.x.com/2/tweets") {
+      return response({ data: { id: "tweet-1" } });
+    }
+    throw new Error(`Unexpected X fixture URL: ${url}`);
+  });
+
+  const result = await authorizedPublish(new XAdapter(), creator, {
+    id: "x-v2-media",
+    title: "Media",
+    contentType: "video",
+    assets: [{ id: "clip", kind: "video", path: mediaPath, mimeType: "video/mp4" }]
+  });
+  assert.equal(result.status, "published");
+  assert.equal(result.externalId, "tweet-1");
+  assert.equal(result.assetEvidence?.[0]?.size, 1024);
+  assert.match(result.assetEvidence?.[0]?.sha256 ?? "", /^[a-f0-9]{64}$/);
+  assert.deepEqual(calls.map(call => [call.method, call.url]), [
+    ["POST", "https://api.x.com/2/media/upload/initialize"],
+    ["POST", "https://api.x.com/2/media/upload/media-1/append"],
+    ["POST", "https://api.x.com/2/media/upload/media-1/finalize"],
+    ["POST", "https://api.x.com/2/tweets"]
+  ]);
+});
+
+test("X mixed video/photo composition is held before upload", async t => {
+  let requests = 0;
+  mockFetch(t, async () => {
+    requests++;
+    return response({});
+  });
+  await assert.rejects(
+    authorizedPublish(new XAdapter(), creator, {
+      id: "x-mixed",
+      title: "Mixed",
+      contentType: "video",
+      assets: [
+        { id: "video", kind: "video", path: "/tmp/video.mp4", mimeType: "video/mp4" },
+        { id: "photo", kind: "image", path: "/tmp/photo.jpg", mimeType: "image/jpeg" }
+      ]
+    }),
+    HoldError
+  );
+  assert.equal(requests, 0);
+});
+
+test("trusted asset roots block absolute and symlink escapes before any upload", async t => {
+  const root = await mkdtemp(join(tmpdir(), "nemoqwen-assets-root-"));
+  const outside = await mkdtemp(join(tmpdir(), "nemoqwen-assets-outside-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  t.after(() => rm(outside, { recursive: true, force: true }));
+
+  const secret = join(outside, "secret.mp4");
+  await writeFile(secret, Buffer.from("DO-NOT-UPLOAD"));
+  const previousRoots = process.env.NEMOQWEN_ASSET_ROOTS;
+  process.env.NEMOQWEN_ASSET_ROOTS = root;
+  t.after(() => {
+    if (previousRoots === undefined) delete process.env.NEMOQWEN_ASSET_ROOTS;
+    else process.env.NEMOQWEN_ASSET_ROOTS = previousRoots;
+  });
+
+  let requests = 0;
+  mockFetch(t, async () => {
+    requests++;
+    return response({});
+  });
+
+  await assert.rejects(
+    authorizedPublish(new YouTubeAdapter(), creator, {
+      id: "asset-escape",
+      title: "Escape",
+      contentType: "video",
+      assets: [{ id: "secret", kind: "video", path: secret, mimeType: "video/mp4" }]
+    }),
+    HoldError
+  );
+  assert.equal(requests, 0);
+});
+
+test("Reddit release target cannot override the creator-owned User-Agent", async t => {
+  let requests = 0;
+  mockFetch(t, async () => {
+    requests++;
+    return response({});
+  });
+  await assert.rejects(
+    authorizedPublish(new RedditAdapter(), creator, {
+      id: "reddit-ua-injection",
+      title: "UA",
+      contentType: "text",
+      targets: { reddit: { subreddit: "test", kind: "self", userAgent: "evil/header" } }
+    }),
+    HoldError
+  );
+  assert.equal(requests, 0);
 });
