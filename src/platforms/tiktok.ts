@@ -1,6 +1,6 @@
 import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { boolValue, credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, boolValue, credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const BASE = "https://open.tiktokapis.com";
 
@@ -36,8 +36,15 @@ export class TikTokAdapter implements PlatformAdapter {
     const privacyLevel = stringValue(t.privacyLevel)
       ?? defaultString(creator, this.platform, "privacyLevel")
       ?? "SELF_ONLY";
+    const creatorInfoError = creatorInfo.error?.code;
+    if (creatorInfoError && creatorInfoError !== "ok") {
+      throw new HoldError(`TikTok creator-info preflight rejected: ${JSON.stringify(creatorInfo.error)}`);
+    }
     const options = creatorInfo.data?.privacy_level_options;
-    if (Array.isArray(options) && !options.includes(privacyLevel)) {
+    if (!Array.isArray(options)) {
+      throw new HoldError("TikTok creator-info preflight did not return privacy_level_options; publishing held");
+    }
+    if (!options.includes(privacyLevel)) {
       throw new Error(`TikTok privacy level ${privacyLevel} is not available for this creator: ${options.join(", ")}`);
     }
 
@@ -68,10 +75,11 @@ export class TikTokAdapter implements PlatformAdapter {
     const errorCode = body.error?.code;
     if (errorCode && errorCode !== "ok") throw new Error(`TikTok publish rejected: ${JSON.stringify(body.error)}`);
     const id = String(body.data?.publish_id ?? "");
+    if (!id) throw new HoldError("TikTok publish job acknowledgement contained no publish_id; operation requires reconciliation before retry");
     return {
       platform: this.platform,
-      status: "published",
-      externalId: id || undefined,
+      status: "submitted",
+      externalId: id,
       detail: "TikTok accepted the publish job; final post availability is asynchronous and must be verified separately.",
       raw: body as any
     };
