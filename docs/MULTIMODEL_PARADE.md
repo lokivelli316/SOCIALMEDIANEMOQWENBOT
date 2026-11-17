@@ -8,6 +8,16 @@ Find and specify additional capabilities for the existing system before it is tr
 
 The task is capability expansion and hardening. It is NOT a blank-sheet redesign.
 
+## Active review lap
+
+**Lap 2 is now the active review target.** The original Lap-1 baseline below remains preserved for historical comparison.
+
+- Lap-2 frozen branch: `baseline/pre-parade-lap2-20261116`
+- Lap-2 frozen commit: `d8a294094813e886346808b2fe59197888ca1268`
+- Lap-2 evidence, repaired findings, known-open targets, scoped reviewer IDs and edge-case-loop requirements: `docs/PARADE_LAP_2.md`
+
+A Lap-2 reviewer must inspect that exact commit. Do not substitute the older pre-parade baseline when reporting a current defect.
+
 ## Required baseline
 
 Review the repository as it exists.
@@ -136,6 +146,9 @@ Focus on architecture consistency, security, data modeling, schema evolution, te
 
 ### ChatGPT / integration pass
 Reconcile proposals into `CAPABILITY_LEDGER.md` without erasing attribution, conflicts, blockers, or required acceptance evidence.
+
+### Lap-2 expanded model lanes
+Nemotron, Qwen, DeepSeek, GLM, Mistral, MiniMax, Grokbot reports, and other capable reviewers may each run independent passes. Use reviewer-scoped IDs from `docs/PARADE_LAP_2.md`; do not let two reviewers overwrite one another by reusing a global CAP number. Model agreement raises priority but never substitutes for code, tests, official API evidence, or real readback.
 
 ## Round-trip order
 

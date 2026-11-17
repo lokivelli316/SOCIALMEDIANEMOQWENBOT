@@ -15,6 +15,23 @@ The existing verified implementation is the baseline. Proposals MUST add, extend
 - Existing authority model: `required | draft | auto`
 - Existing receipts: JSONL under `.nemoqwen/`
 
+## Parade Lap 2 frozen baseline
+
+The Lap-1 baseline remains preserved above. A second frozen implementation baseline now exists after source-grounded repairs:
+
+- Frozen branch: `baseline/pre-parade-lap2-20261116`
+- Exact commit: `d8a294094813e886346808b2fe59197888ca1268`
+- Hardening PR head qualified by CI: `f99192036e424bd91f8bacec27a9e2df460081ba`
+- CI run: `44018763980` — TypeScript check, tests and repo-native skill validation PASS
+- Separate skill-quality run: `44018005907` — NVIDIA SkillEvaluator 0.9.0 keyless Tier-1, 9/9 PASS
+- Lap-2 reviewer contract: `docs/PARADE_LAP_2.md`
+
+Verified-at-code-level repairs before Lap 2 include fail-closed publication authority, truthful asynchronous submission states, TikTok preflight hardening, X media-count refusal, unknown Reddit metrics as null, bounded platform network timeouts, explicit duplicate-publication protection, receipt raw-body redaction + hash chaining + verification CLI, Facebook/TikTok/YouTube readback methods, and bounded YouTube resumable chunks.
+
+These are **not LIVE account claims**. Real credentials, platform permissions/reviews, external publish, real readback and receipts remain required per creator/platform.
+
+**ID collision rule for Lap 2:** reviewers use reviewer-scoped IDs. They do not allocate new global `CAP-###` values. The integration pass assigns global IDs only after preserving provenance and reconciling duplicates/conflicts.
+
 ## Rules for capability intake
 
 1. Do not replace the existing architecture merely because another architecture is preferred.
@@ -55,7 +72,7 @@ The existing verified implementation is the baseline. Proposals MUST add, extend
 | CAP-008 | Windows desktop packaging | Initial architecture | Native installable desktop control surface over shared core | app/desktop, packaging | signing/distribution choices | medium | clean install, update, credential storage, IPC | PROPOSED |  |  |
 | CAP-009 | iOS application | Initial architecture | Mobile creator operations over shared schemas/core contracts | app/mobile, API/service boundary | Apple signing, platform restrictions | high | auth, background limits, secure storage, approval UX | PROPOSED |  |  |
 | CAP-010 | Creator-facing dashboard | Initial architecture | Unified releases, account state, HOLDs, analytics, receipts, and approvals | gui, analytics, receipts | depends on deployment model | medium | role isolation, data integrity, accessibility | PROPOSED |  |  |
-| CAP-011 | Repo-native cross-agent skill pack | Existing repo + owned skill repos + curated starred skill sources | Gives Meta/Muse/Grok/Claude/Codex/Claude-style agents shared operating guidance inside the repo without machine-global setup | .agents/skills, scripts, CI, docs | none for instruction files; referenced external runtimes remain separate | medium | frontmatter validation, duplicate-name check, CI, host mirror sync | IMPLEMENTED |  | Canonical root .agents/skills; provenance in skills/manifest.json; CI verification pending at time of entry |
+| CAP-011 | Repo-native cross-agent skill pack | Existing repo + owned skill repos + curated starred skill sources | Gives Meta/Muse/Grok/Claude/Codex/Claude-style agents shared operating guidance inside the repo without machine-global setup | .agents/skills, scripts, CI, docs | none for instruction files; referenced external runtimes remain separate | medium | frontmatter validation, duplicate-name check, CI, host mirror sync | VERIFIED |  | Canonical root `.agents/skills`; native validation PASS; NVIDIA SkillEvaluator 0.9.0 keyless Tier-1 run `44018005907`: 9/9 PASS, 83.0–89.8/100. This does not certify external tools referenced by skills as installed/LIVE. |
 
 ## Intake template
 

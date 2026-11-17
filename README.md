@@ -60,7 +60,7 @@ A creator can select one primary type, multiple secondary types, and custom cont
 | TikTok | creator-info preflight + direct video post from verified URL | app approval, `video.publish`, user authorization; unaudited restrictions apply |
 | YouTube | resumable video upload from local file | Google OAuth token with YouTube upload scope |
 
-This repository does **not** claim any creator account is LIVE until that creator's credentials, app approvals, and a real publish/readback test pass.
+All five adapters expose the shared `inspect()` readback contract at the Lap-2 baseline. That is code/test capability only. This repository does **not** claim any creator account is LIVE until that creator's credentials, app approvals/scopes, real publish, real readback, and receipts pass.
 
 ## Quick start
 
@@ -75,6 +75,8 @@ npm test
 npm run cli -- creator-types
 npm run cli -- plan config/my-creator.json config/my-release.json
 npm run cli -- publish config/my-creator.json config/my-release.json x --approve
+npm run cli -- inspect config/my-creator.json x <external-id>
+npm run cli -- receipts-verify
 ```
 
 ## Multi-creator credentials
@@ -150,9 +152,10 @@ Before app/CLI/GUI packaging, capability proposals are collected against the ver
 
 - Capability intake and decision ledger: `CAPABILITY_LEDGER.md`
 - Multi-model review contract: `docs/MULTIMODEL_PARADE.md`
-- Frozen pre-parade implementation reference: `baseline/pre-parade-20261116`
-- Verified pre-parade implementation commit: `eb5854e85b3ba011823b38a6a5a733fda008a752`
+- Original Lap-1 frozen reference: `baseline/pre-parade-20261116` at `eb5854e85b3ba011823b38a6a5a733fda008a752`
+- Active Lap-2 frozen reference: `baseline/pre-parade-lap2-20261116` at `d8a294094813e886346808b2fe59197888ca1268`
+- Lap-2 handoff: `docs/PARADE_LAP_2.md`
 
-The parade is intended for Meta, Muse, Grok, Claude, ChatGPT, human reviewers, and later models. Reviewer convergence raises priority but does not automatically authorize an architectural replacement.
+The parade is intended for independent reviewers across Meta, Muse, Grok/Grokbot reports, Claude, ChatGPT, Nemotron, Qwen, DeepSeek, GLM, Mistral, MiniMax, human reviewers, and later models. Mausbot is the intended dispatch role under evaluation, not an alias for Grokbot. Reviewer convergence raises priority but does not automatically authorize an architectural replacement.
 
 See `docs/ARCHITECTURE.md` for the execution contract.
