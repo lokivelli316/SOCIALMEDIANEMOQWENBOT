@@ -4,7 +4,7 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CreatorProfile, ReleaseManifest } from "../src/types.js";
-import { HoldError, fetchWithTimeout } from "../src/platforms/common.js";
+import { AmbiguousOutcomeError, HoldError, fetchWithTimeout, readJsonResponse } from "../src/platforms/common.js";
 import { TikTokAdapter } from "../src/platforms/tiktok.js";
 import { FacebookAdapter } from "../src/platforms/facebook.js";
 import { RedditAdapter } from "../src/platforms/reddit.js";
@@ -269,4 +269,61 @@ test("caller abort signal is composed with fetch timeout signal", async t => {
   const request = fetchWithTimeout("https://example.test/caller-abort", { signal: controller.signal }, 30_000);
   controller.abort();
   await assert.rejects(request, /Abort/);
+});
+
+
+test("mutation timeout is AmbiguousOutcomeError while GET timeout remains a safe HOLD", async t => {
+  mockFetch(t, ((_input, init) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+  })) as typeof fetch);
+  await assert.rejects(
+    fetchWithTimeout("https://example.test/post-timeout", { method: "POST" }, 10),
+    AmbiguousOutcomeError
+  );
+  await assert.rejects(
+    fetchWithTimeout("https://example.test/get-timeout", { method: "GET" }, 10),
+    (error: unknown) => error instanceof HoldError && !(error instanceof AmbiguousOutcomeError)
+  );
+});
+
+test("response body stall is bounded after headers arrive", async t => {
+  mockFetch(t, async () => new Response(new ReadableStream<Uint8Array>({
+    start() {
+      // Headers are available immediately; body intentionally never closes.
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  const response = await fetchWithTimeout("https://example.test/body-stall", { method: "POST" }, 20);
+  await assert.rejects(readJsonResponse(response), AmbiguousOutcomeError);
+});
+
+test("YouTube 308 without Range does not skip the first chunk and no-progress is bounded", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-youtube-noprogress-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const videoPath = join(dir, "video.bin");
+  await writeFile(videoPath, Buffer.alloc(1024, 5));
+
+  const ranges: string[] = [];
+  let call = 0;
+  mockFetch(t, async (_url, init) => {
+    call++;
+    if (call === 1) {
+      return new Response("", { status: 200, headers: { location: "https://upload.example.test/stuck" } });
+    }
+    ranges.push(String(new Headers(init?.headers).get("content-range") ?? ""));
+    return new Response("", { status: 308 });
+  });
+
+  await assert.rejects(new YouTubeAdapter().publish(creator, {
+    id: "youtube-stuck",
+    title: "Stuck",
+    contentType: "video",
+    assets: [{ id: "video", kind: "video", path: videoPath, mimeType: "video/mp4" }]
+  }), /no forward progress/);
+
+  assert.equal(ranges.length, 3);
+  assert.deepEqual(ranges, [
+    "bytes 0-1023/1024",
+    "bytes 0-1023/1024",
+    "bytes 0-1023/1024"
+  ]);
 });
