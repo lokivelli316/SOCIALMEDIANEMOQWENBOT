@@ -8,6 +8,7 @@ import type {
   ReleaseManifest
 } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
 import { openTrustedAsset } from "../core/asset-policy.js";
 import { HoldError, credential, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
@@ -160,6 +161,7 @@ export class XAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const t = target(release, this.platform);
     const assets = selectedAssets(release, this.platform).filter(a => a.path);
