@@ -1,5 +1,6 @@
 import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
 import { HoldError, boolValue, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 const BASE = "https://open.tiktokapis.com";
@@ -21,6 +22,7 @@ export class TikTokAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const headers = {
       Authorization: `Bearer ${accessToken}`,
