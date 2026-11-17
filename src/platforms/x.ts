@@ -149,11 +149,19 @@ export class XAdapter implements PlatformAdapter {
     }));
 
     const id = String(body.data?.id ?? "");
+    if (!id) {
+      return {
+        platform: this.platform,
+        status: "submitted",
+        detail: "X returned a successful response without data.id; remote outcome is unverified. Do not blindly retry.",
+        raw: body as any
+      };
+    }
     return {
       platform: this.platform,
       status: "published",
-      externalId: id || undefined,
-      url: id ? `https://x.com/i/web/status/${id}` : undefined,
+      externalId: id,
+      url: `https://x.com/i/web/status/${id}`,
       raw: body as any
     };
   }
