@@ -135,12 +135,34 @@ export async function readJsonResponse(response: Response): Promise<Record<strin
     const detail = typeof safeBody.error === "object"
       ? JSON.stringify(safeBody.error)
       : redactSecretText(text);
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("retry-after");
-      const suffix = retryAfter ? ` Retry-After: ${retryAfter}.` : "";
-      throw new HoldError(`HTTP 429 rate limited.${suffix} Retry only after the platform window resets.`);
+    const safeDetail = boundedRedactedDetail(detail || response.statusText);
+    const retryAfter = response.headers.get("retry-after");
+    const rateEvidence = [
+      retryAfter ? `Retry-After=${retryAfter}` : undefined,
+      response.headers.get("x-ratelimit-used") ? `X-Ratelimit-Used=${response.headers.get("x-ratelimit-used")}` : undefined,
+      response.headers.get("x-ratelimit-remaining") ? `X-Ratelimit-Remaining=${response.headers.get("x-ratelimit-remaining")}` : undefined,
+      response.headers.get("x-ratelimit-reset") ? `X-Ratelimit-Reset=${response.headers.get("x-ratelimit-reset")}` : undefined
+    ].filter(Boolean).join(" ");
+    const evidenceSuffix = rateEvidence ? ` [${rateEvidence}]` : "";
+    const meta = responseMeta.get(response);
+
+    if (response.status === 401 || response.status === 403) {
+      throw new HoldError(
+        `HTTP ${response.status} account/permission state requires operator reconciliation before retry: ${safeDetail}${evidenceSuffix}`
+      );
     }
-    throw new Error(`HTTP ${response.status}: ${boundedRedactedDetail(detail || response.statusText)}`);
+    if (response.status === 429) {
+      throw new HoldError(
+        `HTTP 429 rate limited; retry only after the platform window resets. ${safeDetail}${evidenceSuffix}`
+      );
+    }
+    if (response.status === 408 || response.status >= 500) {
+      const message =
+        `HTTP ${response.status} after request dispatch; remote outcome may be unknown. ${safeDetail}${evidenceSuffix}`;
+      if (meta?.mutation) throw new AmbiguousOutcomeError(message);
+      throw new HoldError(message);
+    }
+    throw new Error(`HTTP ${response.status}: ${safeDetail}${evidenceSuffix}`);
   }
   return body;
 }
