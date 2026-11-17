@@ -92,9 +92,10 @@ export class YouTubeAdapter implements PlatformAdapter {
     const id = String(body.id ?? "");
     return {
       platform: this.platform,
-      status: "published",
+      status: "submitted",
       externalId: id || undefined,
       url: id ? `https://www.youtube.com/watch?v=${id}` : undefined,
+      detail: "YouTube accepted the upload; processing/publication state requires videos.list readback.",
       raw: body as any
     };
   }
