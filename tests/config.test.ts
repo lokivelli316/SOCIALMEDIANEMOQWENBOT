@@ -58,3 +58,26 @@ test("unknown release target is rejected instead of silently ignored", async () 
     await assert.rejects(loadRelease(path), /Unknown release target platform: xtwitter/);
   });
 });
+
+
+test("creator rejects unknown secondaryTypes instead of silently accepting typos", async () => {
+  await withJson({ ...validCreator, secondaryTypes: ["maker_engineer", "nonsense-archetype"] }, async path => {
+    await assert.rejects(loadCreator(path), /Unknown secondary creator type: nonsense-archetype/);
+  });
+});
+
+test("manifest loader enforces a bounded input size before JSON parsing", async () => {
+  const previous = process.env.NEMOQWEN_MAX_MANIFEST_BYTES;
+  process.env.NEMOQWEN_MAX_MANIFEST_BYTES = "64";
+  try {
+    await withJson({
+      id: "release-large", title: "Large", contentType: "text",
+      text: "x".repeat(256)
+    }, async path => {
+      await assert.rejects(loadRelease(path), /limit is 64/);
+    });
+  } finally {
+    if (previous === undefined) delete process.env.NEMOQWEN_MAX_MANIFEST_BYTES;
+    else process.env.NEMOQWEN_MAX_MANIFEST_BYTES = previous;
+  }
+});
