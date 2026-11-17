@@ -434,7 +434,7 @@ test("X media upload uses current v2 initialize/append/finalize paths", async t 
       assert.equal(form.get("segment_index"), "0");
       assert.equal(form.get("command"), null);
       assert.equal(form.get("media_id"), null);
-      return new Response("", { status: 204 });
+      return new Response(null, { status: 204 });
     }
     if (url.endsWith("/media-1/finalize")) {
       return response({ data: { id: "media-1" } });
