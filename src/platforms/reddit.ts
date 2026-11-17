@@ -6,6 +6,7 @@ import type {
   ReleaseManifest
 } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
 import { credential, defaultString, fetchWithTimeout, readJsonResponse, stringValue, target } from "./common.js";
 
 function userAgent(creator: CreatorProfile, releaseTarget?: Record<string, any>): string {
@@ -39,6 +40,7 @@ export class RedditAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const t = target(release, this.platform);
     const kind = stringValue(t.kind) ?? "self";
