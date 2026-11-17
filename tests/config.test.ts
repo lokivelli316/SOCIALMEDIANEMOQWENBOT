@@ -81,3 +81,19 @@ test("manifest loader enforces a bounded input size before JSON parsing", async 
     else process.env.NEMOQWEN_MAX_MANIFEST_BYTES = previous;
   }
 });
+
+
+test("malformed assets and tags are rejected before plan/publish can crash", async () => {
+  for (const assets of [{}, [null], [{ id: "a", kind: "video", platforms: ["not-a-platform"] }]]) {
+    await withJson({
+      id: "r-assets", title: "Malformed", contentType: "video", assets
+    }, async path => {
+      await assert.rejects(loadRelease(path), /assets/);
+    });
+  }
+  await withJson({
+    id: "r-tags", title: "Malformed Tags", contentType: "text", tags: ["ok", 7]
+  }, async path => {
+    await assert.rejects(loadRelease(path), /tags/);
+  });
+});

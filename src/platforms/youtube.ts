@@ -58,7 +58,16 @@ export class YouTubeAdapter implements PlatformAdapter {
     let body: Record<string, any> | undefined;
     try {
       let offset = 0;
+      let attempts = 0;
+      let consecutiveNoProgress = 0;
+      const maxAttempts = Math.max(4, Math.ceil(info.size / chunkSize) * 4);
+
       while (offset < info.size) {
+        attempts += 1;
+        if (attempts > maxAttempts) {
+          throw new HoldError(`YouTube resumable upload exceeded ${maxAttempts} bounded chunk attempts without completion`);
+        }
+
         const requested = Math.min(chunkSize, info.size - offset);
         const buffer = Buffer.allocUnsafe(requested);
         const { bytesRead } = await handle.read(buffer, 0, requested, offset);
@@ -77,7 +86,18 @@ export class YouTubeAdapter implements PlatformAdapter {
         if (response.status === 308) {
           const range = response.headers.get("range");
           const match = range?.match(/bytes=0-(\d+)/i);
-          offset = match ? Number(match[1]) + 1 : lastByte + 1;
+          const nextOffset = match ? Number(match[1]) + 1 : 0;
+          if (!Number.isSafeInteger(nextOffset) || nextOffset < 0 || nextOffset > info.size) {
+            throw new HoldError(`YouTube returned an invalid resumable Range header: ${range ?? "(missing)"}`);
+          }
+          if (nextOffset <= offset) consecutiveNoProgress += 1;
+          else consecutiveNoProgress = 0;
+          if (consecutiveNoProgress >= 3) {
+            throw new HoldError(
+              `YouTube resumable upload made no forward progress for ${consecutiveNoProgress} consecutive 308 responses; reconcile session state before retrying`
+            );
+          }
+          offset = nextOffset;
           continue;
         }
 

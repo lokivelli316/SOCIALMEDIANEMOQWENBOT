@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   ChannelSnapshot,
   CreatorProfile,
@@ -8,9 +9,10 @@ import type {
   ReleaseManifest
 } from "../types.js";
 import { adapters } from "../platforms/index.js";
-import { HoldError } from "../platforms/common.js";
+import { AmbiguousOutcomeError, HoldError } from "../platforms/common.js";
+import { operationKeyFor } from "./operation.js";
 import { publishAuthority } from "./policy.js";
-import { ReceiptStore } from "./receipts.js";
+import { OperationLockedError, ReceiptStore } from "./receipts.js";
 
 export class NemoQwenOrchestrator {
   private readonly inFlight = new Map<string, Promise<PublishResult>>();
@@ -32,11 +34,13 @@ export class NemoQwenOrchestrator {
     explicitApproval = false,
     forceRetry = false
   ): Promise<PublishResult> {
-    const operationKey = `${creator.id}:${release.id}:${platform}`;
+    const operationKey = operationKeyFor(creator.id, release, platform);
     const existing = this.inFlight.get(operationKey);
     if (existing) return existing;
 
-    const operation = this.publishOnce(creator, release, platform, explicitApproval, forceRetry);
+    const operation = this.publishOnce(
+      creator, release, platform, operationKey, explicitApproval, forceRetry
+    );
     this.inFlight.set(operationKey, operation);
     try {
       return await operation;
@@ -49,41 +53,79 @@ export class NemoQwenOrchestrator {
     creator: CreatorProfile,
     release: ReleaseManifest,
     platform: Platform,
+    operationKey: string,
     explicitApproval: boolean,
     forceRetry: boolean
   ): Promise<PublishResult> {
     const authority = publishAuthority(creator, platform, explicitApproval);
     if (!authority.allowed) {
       const result: PublishResult = { platform, status: "hold", detail: authority.reason };
-      await this.receipt(creator, release, platform, result);
+      await this.receipt(creator, release, platform, operationKey, result);
       return result;
     }
 
-    const prior = await this.receipts.latestActionablePublish(creator.id, release.id, platform);
-    if (prior && !forceRetry) {
-      const result: PublishResult = {
-        platform,
-        status: "hold",
-        externalId: prior.result.externalId,
-        detail: `Duplicate protection: an earlier publish attempt for this creator/release/platform ended as ${prior.result.status}. Inspect platform state and receipts before retrying; --retry is the explicit override.`
-      };
-      await this.receipt(creator, release, platform, result);
-      return result;
-    }
-
-    let result: PublishResult;
+    let releaseOperationLock: (() => Promise<void>) | undefined;
     try {
-      result = await adapters[platform].publish(creator, release);
+      releaseOperationLock = await this.receipts.acquireOperationLock(operationKey);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      result = {
-        platform,
-        status: error instanceof HoldError ? "hold" : "failed",
-        detail
-      };
+      if (!(error instanceof OperationLockedError)) throw error;
+      const result: PublishResult = { platform, status: "hold", detail: error.message };
+      await this.receipt(creator, release, platform, operationKey, result);
+      return result;
     }
-    await this.receipt(creator, release, platform, result);
-    return result;
+
+    let mayReleaseLock = true;
+    try {
+      const prior = await this.receipts.latestActionablePublish(
+        creator.id, release.id, platform, operationKey
+      );
+      if (prior && !forceRetry) {
+        const result: PublishResult = {
+          platform,
+          status: "hold",
+          externalId: prior.result.externalId,
+          detail: `Duplicate protection: an earlier publish attempt for this operation ended as ${prior.result.status}. Inspect platform state and receipts before retrying; --retry is the explicit override.`
+        };
+        await this.receipt(creator, release, platform, operationKey, result);
+        return result;
+      }
+
+      const attemptId = randomUUID();
+      const intent: PublishResult = {
+        platform,
+        status: "verifying",
+        detail: "Publish intent recorded and fsynced before adapter execution; a missing final record requires reconciliation before retry."
+      };
+      await this.receipt(
+        creator, release, platform, operationKey, intent, attemptId, "intent"
+      );
+
+      // From this point forward, failure to persist the final receipt must leave the
+      // operation lock behind. The remote adapter may already have mutated state.
+      mayReleaseLock = false;
+
+      let result: PublishResult;
+      try {
+        result = await adapters[platform].publish(creator, release);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        result = {
+          platform,
+          status: error instanceof AmbiguousOutcomeError
+            ? "verifying"
+            : error instanceof HoldError ? "hold" : "failed",
+          detail
+        };
+      }
+
+      await this.receipt(
+        creator, release, platform, operationKey, result, attemptId, "final"
+      );
+      mayReleaseLock = true;
+      return result;
+    } finally {
+      if (mayReleaseLock && releaseOperationLock) await releaseOperationLock();
+    }
   }
 
   async inspect(creator: CreatorProfile, platform: Platform, externalId: string): Promise<ChannelSnapshot> {
@@ -106,7 +148,10 @@ export class NemoQwenOrchestrator {
     creator: CreatorProfile,
     release: ReleaseManifest,
     platform: Platform,
-    result: PublishResult
+    operationKey: string,
+    result: PublishResult,
+    attemptId?: string,
+    phase?: "intent" | "final"
   ): Promise<void> {
     const receipt: Receipt = {
       at: new Date().toISOString(),
@@ -114,7 +159,9 @@ export class NemoQwenOrchestrator {
       releaseId: release.id,
       platform,
       action: "publish",
-      operationKey: `${creator.id}:${release.id}:${platform}`,
+      operationKey,
+      attemptId,
+      phase,
       result
     };
     await this.receipts.append(receipt);

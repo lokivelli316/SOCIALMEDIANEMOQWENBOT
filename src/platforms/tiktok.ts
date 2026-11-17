@@ -30,7 +30,7 @@ export class TikTokAdapter implements PlatformAdapter {
     const creatorInfo = await readJsonResponse(await fetchWithTimeout(`${BASE}/v2/post/publish/creator_info/query/`, {
       method: "POST",
       headers
-    }));
+    }, undefined, false));
 
     const t = target(release, this.platform);
     const privacyLevel = stringValue(t.privacyLevel)
@@ -93,7 +93,7 @@ export class TikTokAdapter implements PlatformAdapter {
         "Content-Type": "application/json; charset=UTF-8"
       },
       body: JSON.stringify({ publish_id: externalId })
-    }));
+    }, undefined, false));
     const errorCode = body.error?.code;
     if (errorCode && errorCode !== "ok") {
       throw new HoldError(`TikTok status readback rejected: ${JSON.stringify(body.error)}`);
