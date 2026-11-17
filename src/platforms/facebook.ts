@@ -1,6 +1,6 @@
 import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { HoldError, credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class FacebookAdapter implements PlatformAdapter {
   readonly platform = "facebook" as const;
@@ -42,7 +42,7 @@ export class FacebookAdapter implements PlatformAdapter {
       if (link) form.set("link", link);
     }
 
-    const body = await readJsonResponse(await fetch(endpoint, {
+    const body = await readJsonResponse(await fetchWithTimeout(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
