@@ -13,9 +13,12 @@ import { publishAuthority } from "./policy.js";
 import { ReceiptStore } from "./receipts.js";
 
 export class NemoQwenOrchestrator {
+  private readonly inFlight = new Map<string, Promise<PublishResult>>();
+
   constructor(private readonly receipts = new ReceiptStore()) {}
 
   plan(creator: CreatorProfile, release: ReleaseManifest, platform?: Platform): PublishPlan[] {
+    if (platform && !creator.platforms[platform]?.enabled) return [];
     const platforms = platform
       ? [platform]
       : (Object.keys(creator.platforms) as Platform[]).filter(p => creator.platforms[p]?.enabled);
@@ -28,6 +31,26 @@ export class NemoQwenOrchestrator {
     platform: Platform,
     explicitApproval = false,
     forceRetry = false
+  ): Promise<PublishResult> {
+    const operationKey = `${creator.id}:${release.id}:${platform}`;
+    const existing = this.inFlight.get(operationKey);
+    if (existing) return existing;
+
+    const operation = this.publishOnce(creator, release, platform, explicitApproval, forceRetry);
+    this.inFlight.set(operationKey, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.inFlight.get(operationKey) === operation) this.inFlight.delete(operationKey);
+    }
+  }
+
+  private async publishOnce(
+    creator: CreatorProfile,
+    release: ReleaseManifest,
+    platform: Platform,
+    explicitApproval: boolean,
+    forceRetry: boolean
   ): Promise<PublishResult> {
     const authority = publishAuthority(creator, platform, explicitApproval);
     if (!authority.allowed) {
@@ -66,7 +89,17 @@ export class NemoQwenOrchestrator {
   async inspect(creator: CreatorProfile, platform: Platform, externalId: string): Promise<ChannelSnapshot> {
     const adapter = adapters[platform];
     if (!adapter.inspect) throw new HoldError(`${platform} readback is not implemented yet`);
-    return adapter.inspect(creator, externalId);
+    const snapshot = await adapter.inspect(creator, externalId);
+    const receipt: Receipt = {
+      at: new Date().toISOString(),
+      creatorId: creator.id,
+      externalId,
+      platform,
+      action: "inspect",
+      result: snapshot
+    };
+    await this.receipts.append(receipt);
+    return snapshot;
   }
 
   private async receipt(
