@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { CREATOR_TYPES, PLATFORMS, type CreatorProfile, type Platform, type ReleaseManifest } from "../types.js";
 import { registerCredentialBindings } from "./credential-bindings.js";
+import { registerReleaseSource } from "./asset-policy.js";
 
 async function loadJson<T>(path: string): Promise<T> {
   const maxBytesRaw = Number(process.env.NEMOQWEN_MAX_MANIFEST_BYTES ?? "1048576");
@@ -102,5 +103,6 @@ export async function loadRelease(path: string): Promise<ReleaseManifest> {
       }
     }
   }
+  registerReleaseSource(release, path);
   return release;
 }
