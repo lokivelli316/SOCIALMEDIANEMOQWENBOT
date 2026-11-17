@@ -26,11 +26,24 @@ export class NemoQwenOrchestrator {
     creator: CreatorProfile,
     release: ReleaseManifest,
     platform: Platform,
-    explicitApproval = false
+    explicitApproval = false,
+    forceRetry = false
   ): Promise<PublishResult> {
     const authority = publishAuthority(creator, platform, explicitApproval);
     if (!authority.allowed) {
       const result: PublishResult = { platform, status: "hold", detail: authority.reason };
+      await this.receipt(creator, release, platform, result);
+      return result;
+    }
+
+    const prior = await this.receipts.latestActionablePublish(creator.id, release.id, platform);
+    if (prior && !forceRetry) {
+      const result: PublishResult = {
+        platform,
+        status: "hold",
+        externalId: prior.result.externalId,
+        detail: `Duplicate protection: an earlier publish attempt for this creator/release/platform ended as ${prior.result.status}. Inspect platform state and receipts before retrying; --retry is the explicit override.`
+      };
       await this.receipt(creator, release, platform, result);
       return result;
     }
@@ -68,6 +81,7 @@ export class NemoQwenOrchestrator {
       releaseId: release.id,
       platform,
       action: "publish",
+      operationKey: `${creator.id}:${release.id}:${platform}`,
       result
     };
     await this.receipts.append(receipt);
