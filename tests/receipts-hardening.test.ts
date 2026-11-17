@@ -345,7 +345,7 @@ test("head anchor detects tail truncation and legacy hash stripping after chaine
   const rows = (await readFile(fixture2.path, "utf8")).trim().split("\n").map(line => JSON.parse(line));
   delete rows[1].receiptHash;
   delete rows[1].previousReceiptHash;
-  await writeFile(fixture2.path, rows.map(JSON.stringify).join("\n") + "\n", "utf8");
+  await writeFile(fixture2.path, rows.map(row => JSON.stringify(row)).join("\n") + "\n", "utf8");
   const stripped = await fixture2.store.verifyChain();
   assert.equal(stripped.valid, false);
   assert.match(stripped.error ?? "", /legacy receipt appears after chained history/i);
