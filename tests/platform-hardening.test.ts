@@ -196,7 +196,7 @@ test("YouTube resumable upload sends bounded chunks instead of buffering the who
     assets: [{ id: "video", kind: "video", path: videoPath, mimeType: "video/mp4" }],
     targets: { youtube: { privacyStatus: "private" } }
   });
-  assert.equal(result.status, "published");
+  assert.equal(result.status, "submitted");
   assert.equal(result.externalId, "video-chunked");
   assert.deepEqual(ranges, [
     "bytes 0-8388607/8388611",
