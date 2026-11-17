@@ -2,11 +2,11 @@ import type { CreatorProfile, JsonValue, Platform, ReleaseManifest } from "../ty
 import { boundedRedactedDetail, redactSecrets, redactSecretText } from "../core/redaction.js";
 
 export class HoldError extends Error {
-  readonly name = "HoldError";
+  readonly name: string = "HoldError";
 }
 
 export class AmbiguousOutcomeError extends HoldError {
-  readonly name = "AmbiguousOutcomeError";
+  readonly name: string = "AmbiguousOutcomeError";
 }
 
 const responseMeta = new WeakMap<Response, { timeoutMs: number; mutation: boolean }>();
