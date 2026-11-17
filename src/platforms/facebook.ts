@@ -1,5 +1,6 @@
 import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
 import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class FacebookAdapter implements PlatformAdapter {
@@ -20,6 +21,7 @@ export class FacebookAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const t = target(release, this.platform);
     const pageId = stringValue(t.pageId) ?? defaultString(creator, this.platform, "pageId");

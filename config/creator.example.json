@@ -15,7 +15,7 @@
       "enabled": true,
       "approval": "required",
       "credentials": { "accessToken": "CREATOR_REDDIT_ACCESS_TOKEN" },
-      "defaults": { "userAgent": "SOCIALMEDIANEMOQWENBOT/0.1 creator-001" }
+      "defaults": { "userAgent": "script:REPLACE_WITH_REDDIT_APP_ID:0.1.0 (by /u/REPLACE_WITH_USERNAME)" }
     },
     "facebook": {
       "enabled": true,

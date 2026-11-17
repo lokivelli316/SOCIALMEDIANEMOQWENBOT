@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NemoQwenOrchestrator } from "../src/core/orchestrator.js";
 import { OperationLockedError, ReceiptCorruptionError, ReceiptStore, defaultReceiptPath } from "../src/core/receipts.js";
-import { adapters } from "../src/platforms/index.js";
+import type { AdapterResolver } from "../src/platforms/index.js";
+import type { PlatformAdapter } from "../src/platforms/adapter.js";
 import { AmbiguousOutcomeError } from "../src/platforms/common.js";
 import { operationKeyFor } from "../src/core/operation.js";
 import type { CreatorProfile, PublishResult, Receipt, ReleaseManifest } from "../src/types.js";
@@ -24,6 +25,25 @@ const creator: CreatorProfile = {
 };
 
 const release: ReleaseManifest = { id: "release-a", title: "Release A", contentType: "text" };
+
+function resolverFor(overrides: Partial<PlatformAdapter>): AdapterResolver {
+  const adapter: PlatformAdapter = {
+    platform: "x",
+    plan: (c, r) => ({
+      platform: "x", creatorId: c.id, releaseId: r.id,
+      summary: "fixture", requiresApproval: false, warnings: []
+    }),
+    publish: async () => ({ platform: "x", status: "published", externalId: "fixture" }),
+    inspect: async (_creator, externalId) => ({
+      platform: "x", externalId, metrics: {}
+    }),
+    ...overrides
+  };
+  return platform => {
+    if (platform !== "x") throw new Error(`Unexpected fixture platform: ${platform}`);
+    return adapter;
+  };
+}
 
 function receipt(status: PublishResult["status"]): Receipt {
   return {
@@ -88,15 +108,15 @@ test("orchestrator holds a repeated actionable publish before touching the platf
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
   await fixture.store.append(receipt("submitted"));
 
-  const original = adapters.x.publish;
   let adapterCalls = 0;
-  adapters.x.publish = async () => {
-    adapterCalls++;
-    return { platform: "x", status: "published", externalId: "new-remote" };
-  };
-  t.after(() => { adapters.x.publish = original; });
+  const resolver = resolverFor({
+    publish: async () => {
+      adapterCalls++;
+      return { platform: "x", status: "published", externalId: "new-remote" };
+    }
+  });
 
-  const result = await new NemoQwenOrchestrator(fixture.store).publish(creator, release, "x");
+  const result = await new NemoQwenOrchestrator(fixture.store, resolver).publish(creator, release, "x");
   assert.equal(result.status, "hold");
   assert.equal(result.externalId, "remote-1");
   assert.match(result.detail ?? "", /Duplicate protection/);
@@ -108,15 +128,15 @@ test("explicit retry is the only duplicate-protection override and is receipted"
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
   await fixture.store.append(receipt("failed"));
 
-  const original = adapters.x.publish;
   let adapterCalls = 0;
-  adapters.x.publish = async () => {
-    adapterCalls++;
-    return { platform: "x", status: "published", externalId: "retry-remote" };
-  };
-  t.after(() => { adapters.x.publish = original; });
+  const resolver = resolverFor({
+    publish: async () => {
+      adapterCalls++;
+      return { platform: "x", status: "published", externalId: "retry-remote" };
+    }
+  });
 
-  const result = await new NemoQwenOrchestrator(fixture.store).publish(creator, release, "x", false, true);
+  const result = await new NemoQwenOrchestrator(fixture.store, resolver).publish(creator, release, "x", false, true);
   assert.equal(result.status, "published");
   assert.equal(result.externalId, "retry-remote");
   assert.equal(adapterCalls, 1);
@@ -144,21 +164,21 @@ test("receipt detail is scrubbed even when an API error echoes a secret", async 
 test("same-operation concurrent publishes are single-flight in one orchestrator", async t => {
   const fixture = await tempReceiptStore();
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
-  const original = adapters.x.publish;
   let calls = 0;
   let releaseAdapter!: () => void;
   let markStarted!: () => void;
   const gate = new Promise<void>(resolve => { releaseAdapter = resolve; });
   const started = new Promise<void>(resolve => { markStarted = resolve; });
-  adapters.x.publish = async () => {
-    calls++;
-    markStarted();
-    await gate;
-    return { platform: "x", status: "published", externalId: "only-one" };
-  };
-  t.after(() => { adapters.x.publish = original; });
+  const resolver = resolverFor({
+    publish: async () => {
+      calls++;
+      markStarted();
+      await gate;
+      return { platform: "x", status: "published", externalId: "only-one" };
+    }
+  });
 
-  const orchestrator = new NemoQwenOrchestrator(fixture.store);
+  const orchestrator = new NemoQwenOrchestrator(fixture.store, resolver);
   const first = orchestrator.publish(creator, release, "x");
   const second = orchestrator.publish(creator, release, "x");
   await started;
@@ -173,15 +193,15 @@ test("same-operation concurrent publishes are single-flight in one orchestrator"
 test("inspect readback writes a durable receipt while stripping raw response bodies", async t => {
   const fixture = await tempReceiptStore();
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
-  const original = adapters.x.inspect;
-  adapters.x.inspect = async (_creator, externalId) => ({
-    platform: "x",
-    externalId,
-    metrics: { like_count: 7 },
-    raw: { access_token: "must-not-persist" }
+  const resolver = resolverFor({
+    inspect: async (_creator, externalId) => ({
+      platform: "x",
+      externalId,
+      metrics: { like_count: 7 },
+      raw: { access_token: "must-not-persist" }
+    })
   });
-  t.after(() => { adapters.x.inspect = original; });
-  const snapshot = await new NemoQwenOrchestrator(fixture.store).inspect(creator, "x", "tweet-7");
+  const snapshot = await new NemoQwenOrchestrator(fixture.store, resolver).inspect(creator, "x", "tweet-7");
   assert.equal(snapshot.metrics.like_count, 7);
   const row = JSON.parse((await readFile(fixture.path, "utf8")).trim());
   assert.equal(row.action, "inspect");
@@ -222,16 +242,16 @@ test("default receipt path is independent of process working directory", async (
 test("ambiguous mutation outcome is verifying and blocks blind retry without --retry", async t => {
   const fixture = await tempReceiptStore();
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
-  const original = adapters.x.publish;
   let calls = 0;
-  adapters.x.publish = async () => {
-    calls++;
-    if (calls === 1) throw new AmbiguousOutcomeError("fixture ambiguous mutation");
-    return { platform: "x", status: "published", externalId: "duplicate-remote" };
-  };
-  t.after(() => { adapters.x.publish = original; });
+  const resolver = resolverFor({
+    publish: async () => {
+      calls++;
+      if (calls === 1) throw new AmbiguousOutcomeError("fixture ambiguous mutation");
+      return { platform: "x", status: "published", externalId: "duplicate-remote" };
+    }
+  });
 
-  const orchestrator = new NemoQwenOrchestrator(fixture.store);
+  const orchestrator = new NemoQwenOrchestrator(fixture.store, resolver);
   const first = await orchestrator.publish(creator, release, "x");
   assert.equal(first.status, "verifying");
   const second = await orchestrator.publish(creator, release, "x");
@@ -243,19 +263,19 @@ test("ambiguous mutation outcome is verifying and blocks blind retry without --r
 test("publish intent is fsynced before adapter execution completes", async t => {
   const fixture = await tempReceiptStore();
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
-  const original = adapters.x.publish;
   let started!: () => void;
   let finish!: () => void;
   const didStart = new Promise<void>(resolve => { started = resolve; });
   const gate = new Promise<void>(resolve => { finish = resolve; });
-  adapters.x.publish = async () => {
-    started();
-    await gate;
-    return { platform: "x", status: "published", externalId: "remote-intent" };
-  };
-  t.after(() => { adapters.x.publish = original; });
+  const resolver = resolverFor({
+    publish: async () => {
+      started();
+      await gate;
+      return { platform: "x", status: "published", externalId: "remote-intent" };
+    }
+  });
 
-  const pending = new NemoQwenOrchestrator(fixture.store).publish(creator, release, "x");
+  const pending = new NemoQwenOrchestrator(fixture.store, resolver).publish(creator, release, "x");
   await didStart;
   const rows = (await readFile(fixture.path, "utf8")).trim().split("\n").map(line => JSON.parse(line));
   assert.equal(rows.length, 1);
@@ -269,19 +289,19 @@ test("publish intent is fsynced before adapter execution completes", async t => 
 test("safe final HOLD supersedes its write-ahead intent and remains retryable", async t => {
   const fixture = await tempReceiptStore();
   t.after(() => rm(fixture.dir, { recursive: true, force: true }));
-  const original = adapters.x.publish;
   let calls = 0;
-  adapters.x.publish = async () => {
-    calls++;
-    if (calls === 1) {
-      const { HoldError } = await import("../src/platforms/common.js");
-      throw new HoldError("safe preflight hold");
+  const resolver = resolverFor({
+    publish: async () => {
+      calls++;
+      if (calls === 1) {
+        const { HoldError } = await import("../src/platforms/common.js");
+        throw new HoldError("safe preflight hold");
+      }
+      return { platform: "x", status: "published", externalId: "after-safe-hold" };
     }
-    return { platform: "x", status: "published", externalId: "after-safe-hold" };
-  };
-  t.after(() => { adapters.x.publish = original; });
+  });
 
-  const orchestrator = new NemoQwenOrchestrator(fixture.store);
+  const orchestrator = new NemoQwenOrchestrator(fixture.store, resolver);
   assert.equal((await orchestrator.publish(creator, release, "x")).status, "hold");
   assert.equal((await orchestrator.publish(creator, release, "x")).status, "published");
   assert.equal(calls, 2);

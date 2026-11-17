@@ -1,6 +1,7 @@
-import { open, stat } from "node:fs/promises";
 import type { ChannelSnapshot, CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
+import { AssetPolicyError, openTrustedAsset } from "../core/asset-policy.js";
 import type { PlatformAdapter } from "./adapter.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
 import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class YouTubeAdapter implements PlatformAdapter {
@@ -19,11 +20,19 @@ export class YouTubeAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const asset = selectedAssets(release, this.platform).find(a => a.kind === "video" && a.path);
     if (!asset?.path) throw new Error("YouTube upload requires a local video asset path");
 
-    const info = await stat(asset.path);
+    let trusted;
+    try {
+      trusted = await openTrustedAsset(release, asset.path);
+    } catch (error) {
+      if (error instanceof AssetPolicyError) throw new HoldError(error.message);
+      throw error;
+    }
+    const info = { size: trusted.size };
     const mime = asset.mimeType ?? "video/mp4";
     const t = target(release, this.platform);
     const privacyStatus = stringValue(t.privacyStatus)
@@ -54,7 +63,7 @@ export class YouTubeAdapter implements PlatformAdapter {
     if (!location) throw new Error("YouTube resumable upload did not return a Location header");
 
     const chunkSize = 8 * 1024 * 1024; // 8 MiB, a multiple of YouTube's 256 KiB chunk requirement.
-    const handle = await open(asset.path, "r");
+    const handle = trusted.handle;
     let body: Record<string, any> | undefined;
     try {
       let offset = 0;
@@ -116,6 +125,12 @@ export class YouTubeAdapter implements PlatformAdapter {
       externalId: id || undefined,
       url: id ? `https://www.youtube.com/watch?v=${id}` : undefined,
       detail: "YouTube accepted the upload; processing/publication state requires videos.list readback.",
+      assetEvidence: [{
+        id: asset.id,
+        relativePath: trusted.relativePath,
+        size: trusted.size,
+        sha256: trusted.sha256
+      }],
       raw: body as any
     };
   }

@@ -7,11 +7,15 @@ import { loadCreator, loadRelease } from "../src/core/config.js";
 
 async function withJson(value: unknown, fn: (path: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "nemoqwen-config-test-"));
+  const previousLegacy = process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+  process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS = "1";
   try {
     const path = join(dir, "fixture.json");
     await writeFile(path, JSON.stringify(value), "utf8");
     await fn(path);
   } finally {
+    if (previousLegacy === undefined) delete process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+    else process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS = previousLegacy;
     await rm(dir, { recursive: true, force: true });
   }
 }
@@ -96,4 +100,67 @@ test("malformed assets and tags are rejected before plan/publish can crash", asy
   }, async path => {
     await assert.rejects(loadRelease(path), /tags/);
   });
+});
+
+
+test("operator credential bindings reject cross-creator and unrelated environment references", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-bindings-test-"));
+  const creatorPath = join(dir, "creator.json");
+  const bindingsPath = join(dir, "bindings.json");
+  const previousBindings = process.env.NEMOQWEN_CREDENTIAL_BINDINGS;
+  const previousLegacy = process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+  delete process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+  process.env.NEMOQWEN_CREDENTIAL_BINDINGS = bindingsPath;
+  try {
+    const profile = {
+      ...validCreator,
+      id: "creator-a",
+      platforms: {
+        x: { enabled: true, approval: "required", credentials: { accessToken: "CREATOR_B_X_TOKEN" } }
+      }
+    };
+    await writeFile(creatorPath, JSON.stringify(profile), "utf8");
+    await writeFile(bindingsPath, JSON.stringify({
+      version: 1,
+      creators: {
+        "creator-a": { x: { accessToken: "CREATOR_A_X_TOKEN" } }
+      }
+    }), "utf8");
+    await assert.rejects(loadCreator(creatorPath), /not operator-bound/);
+
+    profile.platforms.x.credentials.accessToken = "AWS_SECRET_ACCESS_KEY";
+    await writeFile(creatorPath, JSON.stringify(profile), "utf8");
+    await assert.rejects(loadCreator(creatorPath), /not operator-bound/);
+
+    profile.platforms.x.credentials.accessToken = "CREATOR_A_X_TOKEN";
+    await writeFile(creatorPath, JSON.stringify(profile), "utf8");
+    const loaded = await loadCreator(creatorPath);
+    assert.equal(loaded.platforms.x?.credentials.accessToken, "CREATOR_A_X_TOKEN");
+  } finally {
+    if (previousBindings === undefined) delete process.env.NEMOQWEN_CREDENTIAL_BINDINGS;
+    else process.env.NEMOQWEN_CREDENTIAL_BINDINGS = previousBindings;
+    if (previousLegacy === undefined) delete process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+    else process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS = previousLegacy;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("creator loading fails closed when no operator credential binding file exists", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nemoqwen-missing-bindings-"));
+  const creatorPath = join(dir, "creator.json");
+  const missingPath = join(dir, "missing-bindings.json");
+  const previousBindings = process.env.NEMOQWEN_CREDENTIAL_BINDINGS;
+  const previousLegacy = process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+  delete process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+  process.env.NEMOQWEN_CREDENTIAL_BINDINGS = missingPath;
+  try {
+    await writeFile(creatorPath, JSON.stringify(validCreator), "utf8");
+    await assert.rejects(loadCreator(creatorPath), /Operator credential bindings are not configured/);
+  } finally {
+    if (previousBindings === undefined) delete process.env.NEMOQWEN_CREDENTIAL_BINDINGS;
+    else process.env.NEMOQWEN_CREDENTIAL_BINDINGS = previousBindings;
+    if (previousLegacy === undefined) delete process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS;
+    else process.env.NEMOQWEN_ALLOW_LEGACY_CREDENTIAL_REFS = previousLegacy;
+    await rm(dir, { recursive: true, force: true });
+  }
 });

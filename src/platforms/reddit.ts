@@ -6,12 +6,23 @@ import type {
   ReleaseManifest
 } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { credential, defaultString, fetchWithTimeout, readJsonResponse, stringValue, target } from "./common.js";
+import { requireAuthorizedPublish } from "../core/publish-context.js";
+import { HoldError, credential, defaultString, fetchWithTimeout, readJsonResponse, stringValue, target } from "./common.js";
 
-function userAgent(creator: CreatorProfile, releaseTarget?: Record<string, any>): string {
-  return stringValue(releaseTarget?.userAgent)
-    ?? defaultString(creator, "reddit", "userAgent")
-    ?? `SOCIALMEDIANEMOQWENBOT/0.1 creator/${creator.id}`;
+function userAgent(creator: CreatorProfile): string {
+  const configured = defaultString(creator, "reddit", "userAgent");
+  if (!configured) {
+    throw new HoldError(
+      `${creator.id}/reddit requires creator-profile defaults.userAgent in Reddit's descriptive format`
+    );
+  }
+  const pattern = /^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+:[A-Za-z0-9._-]+ \(by \/u\/[A-Za-z0-9_-]+\)$/;
+  if (!pattern.test(configured)) {
+    throw new HoldError(
+      `${creator.id}/reddit defaults.userAgent must match platform:app-id:version (by /u/username)`
+    );
+  }
+  return configured;
 }
 
 export class RedditAdapter implements PlatformAdapter {
@@ -39,12 +50,16 @@ export class RedditAdapter implements PlatformAdapter {
   }
 
   async publish(creator: CreatorProfile, release: ReleaseManifest): Promise<PublishResult> {
+    requireAuthorizedPublish();
     const accessToken = credential(creator, this.platform, "accessToken");
     const t = target(release, this.platform);
     const kind = stringValue(t.kind) ?? "self";
+    if (t.userAgent !== undefined) {
+      throw new HoldError("Release targets may not override Reddit User-Agent; configure it in the creator profile");
+    }
     const headers = {
       Authorization: `Bearer ${accessToken}`,
-      "User-Agent": userAgent(creator, t),
+      "User-Agent": userAgent(creator),
       "Content-Type": "application/x-www-form-urlencoded"
     };
 
