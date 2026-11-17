@@ -1,6 +1,6 @@
 import type { CreatorProfile, PublishPlan, PublishResult, ReleaseManifest } from "../types.js";
 import type { PlatformAdapter } from "./adapter.js";
-import { credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
+import { HoldError, credential, defaultString, readJsonResponse, selectedAssets, stringValue, target } from "./common.js";
 
 export class FacebookAdapter implements PlatformAdapter {
   readonly platform = "facebook" as const;
@@ -51,11 +51,16 @@ export class FacebookAdapter implements PlatformAdapter {
       body: form
     }));
 
+    if (body.error) throw new Error(`Facebook API rejected publication: ${JSON.stringify(body.error)}`);
     const id = String(body.id ?? body.video_id ?? "");
+    if (!id) throw new HoldError("Facebook accepted a submission without an object ID; verify before retrying");
     return {
       platform: this.platform,
-      status: "published",
-      externalId: id || undefined,
+      status: "submitted",
+      externalId: id,
+      detail: videoUrl
+        ? "Facebook accepted the video upload; transcoding and public visibility require readback."
+        : "Facebook accepted the feed request; public visibility has not been verified by readback.",
       raw: body as any
     };
   }
