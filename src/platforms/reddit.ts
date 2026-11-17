@@ -130,10 +130,10 @@ export class RedditAdapter implements PlatformAdapter {
     }));
     const data = body.data?.children?.[0]?.data ?? {};
     const metrics = {
-      score: typeof data.score === "number" ? data.score : 0,
-      upvote_ratio: typeof data.upvote_ratio === "number" ? data.upvote_ratio : 0,
-      num_comments: typeof data.num_comments === "number" ? data.num_comments : 0,
-      ups: typeof data.ups === "number" ? data.ups : 0
+      score: typeof data.score === "number" ? data.score : null,
+      upvote_ratio: typeof data.upvote_ratio === "number" ? data.upvote_ratio : null,
+      num_comments: typeof data.num_comments === "number" ? data.num_comments : null,
+      ups: typeof data.ups === "number" ? data.ups : null
     };
     return {
       platform: this.platform,
