@@ -68,12 +68,20 @@ export interface PublishPlan {
   warnings: string[];
 }
 
+export interface AssetEvidence {
+  id: string;
+  relativePath: string;
+  size: number;
+  sha256: string;
+}
+
 export interface PublishResult {
   platform: Platform;
   status: "published" | "submitted" | "verifying" | "hold" | "failed" | "planned";
   externalId?: string;
   url?: string;
   detail?: string;
+  assetEvidence?: AssetEvidence[];
   raw?: JsonValue;
 }
 
