@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 import type { Platform, PublishResult, Receipt, ReceiptResult } from "../types.js";
 import { redactSecretText } from "./redaction.js";
 
+export function defaultReceiptPath(): string {
+  return process.env.NEMOQWEN_RECEIPTS ?? fileURLToPath(new URL("../../.nemoqwen/receipts.jsonl", import.meta.url));
+}
+
 export interface ReceiptVerification {
   valid: boolean;
   legacyRecords: number;
@@ -46,7 +50,7 @@ function parseLines(text: string): Receipt[] {
 export class ReceiptStore {
   private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly path = process.env.NEMOQWEN_RECEIPTS ?? fileURLToPath(new URL("../../.nemoqwen/receipts.jsonl", import.meta.url))) {}
+  constructor(private readonly path = defaultReceiptPath()) {}
 
   async append(receipt: Receipt): Promise<void> {
     const operation = this.writeQueue.then(() => this.appendSerialized(receipt));
